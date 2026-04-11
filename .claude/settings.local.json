@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /e/Coding/Projects/voice2latex log --oneline)",
+      "Bash(git -C /e/Coding/Projects/voice2latex status)",
+      "Bash(git -C /e/Coding/Projects/voice2latex log -1 --stat)"
+    ]
+  }
+}
