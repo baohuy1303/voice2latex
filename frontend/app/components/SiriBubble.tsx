@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import katex from "katex";
 
 interface ChatMessage {
@@ -20,18 +21,12 @@ interface SiriBubbleProps {
 
 function renderInlineKatex(text: string): string {
   let html = text.replace(/\$\$([^$]+)\$\$/g, (_m, expr) => {
-    try {
-      return katex.renderToString(expr, { displayMode: true, throwOnError: false });
-    } catch {
-      return `$$${expr}$$`;
-    }
+    try { return katex.renderToString(expr, { displayMode: true, throwOnError: false }); }
+    catch { return `$$${expr}$$`; }
   });
   html = html.replace(/\$([^$]+)\$/g, (_m, expr) => {
-    try {
-      return katex.renderToString(expr, { displayMode: false, throwOnError: false });
-    } catch {
-      return `$${expr}$`;
-    }
+    try { return katex.renderToString(expr, { displayMode: false, throwOnError: false }); }
+    catch { return `$${expr}$`; }
   });
   return html;
 }
@@ -76,10 +71,11 @@ export default function SiriBubble({
     ? "siri-thinking"
     : "siri-idle";
 
-  // Collapsed — show only a tiny restore button
   if (isCollapsed) {
     return (
-      <button
+      <motion.button
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
         onClick={() => setIsCollapsed(false)}
         className="fixed bottom-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-zinc-800/60 backdrop-blur-sm border border-zinc-700/30 flex items-center justify-center text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/60 transition-all"
         style={{ zIndex: 9999 }}
@@ -87,151 +83,164 @@ export default function SiriBubble({
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
           <path fillRule="evenodd" d="M14.77 12.79a.75.75 0 0 1-1.06-.02L10 8.832 6.29 12.77a.75.75 0 1 1-1.08-1.04l4.25-4.5a.75.75 0 0 1 1.08 0l4.25 4.5a.75.75 0 0 1-.02 1.06Z" clipRule="evenodd" />
         </svg>
-      </button>
+      </motion.button>
     );
   }
 
   return (
     <>
-      {/* Floating conversation bubbles — hide on hover so user can click through */}
-      {!isExpanded && (messages.length > 0 || isLoading) && (
-        <div
-          className="fixed left-1/2 -translate-x-1/2 w-[340px] flex flex-col gap-1.5 pointer-events-none"
-          style={{ zIndex: 9998, bottom: "100px" }}
-        >
-          {messages.slice(-2).map((msg, i) => (
-            <div
-              key={i}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed ${
-                  msg.role === "user"
-                    ? "bg-blue-600/20 text-blue-200 rounded-br-sm backdrop-blur-sm"
-                    : "bg-zinc-800/20 text-zinc-300 rounded-bl-sm backdrop-blur-sm"
-                }`}
-                dangerouslySetInnerHTML={
-                  msg.role === "assistant"
-                    ? { __html: renderInlineKatex(msg.content) }
-                    : undefined
-                }
+      {/* Floating conversation bubbles */}
+      <AnimatePresence>
+        {!isExpanded && (messages.length > 0 || isLoading) && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="fixed left-1/2 -translate-x-1/2 w-[340px] flex flex-col gap-1.5 pointer-events-none"
+            style={{ zIndex: 9998, bottom: "100px" }}
+          >
+            {messages.slice(-2).map((msg, i) => (
+              <motion.div
+                key={messages.length - 2 + i}
+                initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ delay: i * 0.1, type: "spring", damping: 20, stiffness: 300 }}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                {msg.role === "user" ? msg.content : undefined}
-              </div>
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-zinc-800/20 backdrop-blur-sm rounded-2xl rounded-bl-sm px-3 py-1.5 text-xs text-zinc-400 flex gap-1">
-                <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+                <div
+                  className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed ${
+                    msg.role === "user"
+                      ? "bg-blue-600/20 text-blue-200 rounded-br-sm backdrop-blur-sm"
+                      : "bg-zinc-800/20 text-zinc-300 rounded-bl-sm backdrop-blur-sm"
+                  }`}
+                  dangerouslySetInnerHTML={
+                    msg.role === "assistant" ? { __html: renderInlineKatex(msg.content) } : undefined
+                  }
+                >
+                  {msg.role === "user" ? msg.content : undefined}
+                </div>
+              </motion.div>
+            ))}
+            {isLoading && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex justify-start"
+              >
+                <div className="bg-zinc-800/20 backdrop-blur-sm rounded-2xl rounded-bl-sm px-3 py-1.5 text-xs text-zinc-400 flex gap-1">
+                  <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main bubble container */}
-      <div
+      <motion.div
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ type: "spring", damping: 20, stiffness: 200 }}
         className="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center"
         style={{ zIndex: 9999 }}
       >
         {/* Expanded chat panel */}
-        {isExpanded && (
-          <div className="bubble-chat mb-4 w-[380px] max-h-[420px] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-2xl shadow-2xl shadow-black/40 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80">
-              <span className="text-xs font-medium text-zinc-400">Chat</span>
-              <button
-                onClick={() => setIsExpanded(false)}
-                className="text-zinc-500 hover:text-zinc-300 text-sm leading-none"
-              >
-                &times;
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[150px] max-h-[300px]">
-              {messages.length === 0 && (
-                <p className="text-zinc-600 text-xs text-center mt-6">
-                  Speak or type to edit your LaTeX...
-                </p>
-              )}
-              {messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-blue-600/90 text-white rounded-br-sm"
-                        : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
-                    }`}
-                    dangerouslySetInnerHTML={
-                      msg.role === "assistant"
-                        ? { __html: renderInlineKatex(msg.content) }
-                        : undefined
-                    }
-                  >
-                    {msg.role === "user" ? msg.content : undefined}
-                  </div>
-                </div>
-              ))}
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-zinc-800 rounded-2xl rounded-bl-sm px-3 py-2 text-xs text-zinc-400 flex gap-1">
-                    <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {pdfContext && (
-              <div className="mx-3 mb-1 flex items-center gap-1.5 px-2 py-1 bg-blue-950/50 border border-blue-800/30 rounded-lg">
-                <span className="text-[9px] uppercase tracking-wider text-blue-400 font-medium">PDF</span>
-                <span className="text-[10px] text-zinc-400 truncate flex-1">
-                  {pdfContext.slice(0, 50)}...
-                </span>
-                <button onClick={onClearContext} className="text-zinc-500 hover:text-zinc-300 text-[10px]">
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0, scale: 0.9 }}
+              animate={{ height: "auto", opacity: 1, scale: 1 }}
+              exit={{ height: 0, opacity: 0, scale: 0.9 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="mb-4 w-[380px] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80">
+                <span className="text-xs font-medium text-zinc-400">Chat</span>
+                <button onClick={() => setIsExpanded(false)} className="text-zinc-500 hover:text-zinc-300 text-sm leading-none">
                   &times;
                 </button>
               </div>
-            )}
 
-            <form onSubmit={handleSubmit} className="p-2.5 border-t border-zinc-800/80">
-              <div className="flex gap-2">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type a command..."
-                  disabled={isLoading}
-                  className="flex-1 bg-zinc-800/80 text-zinc-100 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-indigo-500/50 placeholder-zinc-500 disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={isLoading || !input.trim()}
-                  className="px-3 py-2 text-xs font-medium rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white transition-colors"
-                >
-                  Send
-                </button>
+              <div className="overflow-y-auto p-3 space-y-2.5 max-h-[300px]">
+                {messages.length === 0 && (
+                  <p className="text-zinc-600 text-xs text-center mt-6">Speak or type to edit your LaTeX...</p>
+                )}
+                {messages.map((msg, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.03 * i }}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-blue-600/90 text-white rounded-br-sm"
+                          : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
+                      }`}
+                      dangerouslySetInnerHTML={
+                        msg.role === "assistant" ? { __html: renderInlineKatex(msg.content) } : undefined
+                      }
+                    >
+                      {msg.role === "user" ? msg.content : undefined}
+                    </div>
+                  </motion.div>
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-zinc-800 rounded-2xl rounded-bl-sm px-3 py-2 text-xs text-zinc-400 flex gap-1">
+                      <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
-            </form>
-          </div>
-        )}
 
-        {/* Controls row — hides on hover when not recording/loading */}
-        <div className={`flex items-center gap-3 transition-opacity duration-200 ${
-          ""
-        }`}>
+              {pdfContext && (
+                <div className="mx-3 mb-1 flex items-center gap-1.5 px-2 py-1 bg-blue-950/50 border border-blue-800/30 rounded-lg">
+                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                  <span className="text-[10px] text-zinc-400 truncate flex-1">{pdfContext}</span>
+                  <button onClick={onClearContext} className="text-zinc-500 hover:text-zinc-300 text-[10px]">&times;</button>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="p-2.5 border-t border-zinc-800/80">
+                <div className="flex gap-2">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Type a command..."
+                    disabled={isLoading}
+                    className="flex-1 bg-zinc-800/80 text-zinc-100 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-indigo-500/50 placeholder-zinc-500 disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isLoading || !input.trim()}
+                    className="px-3 py-2 text-xs font-medium rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white transition-colors"
+                  >
+                    Send
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Controls row */}
+        <div className="flex items-center gap-3">
           {/* Chat toggle */}
-          <button
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => setIsExpanded(!isExpanded)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border ${
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors border ${
               isExpanded
                 ? "bg-zinc-700 border-zinc-600 text-white"
                 : "bg-zinc-900/90 border-zinc-700/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
@@ -240,23 +249,29 @@ export default function SiriBubble({
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4.5 h-4.5">
               <path d="M4.913 2.658c2.075-.27 4.19-.408 6.337-.408 2.147 0 4.262.139 6.337.408 1.922.25 3.291 1.861 3.405 3.727a4.403 4.403 0 0 0-1.032-.211 50.89 50.89 0 0 0-8.42 0c-2.358.196-4.04 2.19-4.04 4.434v4.286a4.47 4.47 0 0 0 2.433 3.984L7.28 21.53A.75.75 0 0 1 6 20.97V18.9a49.8 49.8 0 0 1-1.087-.058C2.99 18.63 1.5 16.963 1.5 14.97V6.385c0-1.866 1.369-3.477 3.413-3.727ZM15.75 7.5c-1.376 0-2.739.057-4.086.169C10.124 7.797 9 9.103 9 10.609v4.285c0 1.507 1.128 2.814 2.67 2.94 1.243.102 2.5.157 3.768.165l2.782 2.781a.75.75 0 0 0 1.28-.53v-2.39l.33-.026c1.542-.125 2.67-1.433 2.67-2.94v-4.286c0-1.505-1.125-2.811-2.664-2.94A49.392 49.392 0 0 0 15.75 7.5Z" />
             </svg>
-          </button>
+          </motion.button>
 
           {/* Siri voice orb */}
-          <button
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
             onClick={onMicToggle}
             disabled={isLoading}
-            className={`w-16 h-16 rounded-full flex items-center justify-center transition-all disabled:opacity-40 ${siriState}`}
+            className={`w-16 h-16 rounded-full flex items-center justify-center disabled:opacity-40 ${siriState}`}
           >
             {isRecording ? (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-white/90 drop-shadow-lg">
+              <motion.svg
+                initial={{ scale: 0.8 }}
+                animate={{ scale: 1 }}
+                xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-white/90 drop-shadow-lg"
+              >
                 <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
+              </motion.svg>
             ) : isLoading ? (
               <div className="flex gap-1">
-                <span className="w-1.5 h-1.5 bg-white/80 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1.5 h-1.5 bg-white/80 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-1.5 h-1.5 bg-white/80 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                <motion.span animate={{ y: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0 }} className="w-1.5 h-1.5 bg-white/80 rounded-full" />
+                <motion.span animate={{ y: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.15 }} className="w-1.5 h-1.5 bg-white/80 rounded-full" />
+                <motion.span animate={{ y: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.3 }} className="w-1.5 h-1.5 bg-white/80 rounded-full" />
               </div>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-white/90 drop-shadow-lg">
@@ -264,19 +279,21 @@ export default function SiriBubble({
                 <path d="M6 10a1 1 0 0 0-2 0 8 8 0 0 0 7 7.93V21H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.07A8 8 0 0 0 20 10a1 1 0 1 0-2 0 6 6 0 0 1-12 0Z" />
               </svg>
             )}
-          </button>
+          </motion.button>
 
-          {/* Collapse button */}
-          <button
+          {/* Collapse */}
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => setIsCollapsed(true)}
-            className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-900/90 border border-zinc-700/50 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-all"
+            className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-900/90 border border-zinc-700/50 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
               <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
             </svg>
-          </button>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
     </>
   );
 }

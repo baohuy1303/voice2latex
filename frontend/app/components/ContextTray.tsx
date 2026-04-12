@@ -58,7 +58,10 @@ export default function ContextTray({ snippets, onRemove, onClearAll }: ContextT
       {!isCollapsed && (
         <div className="max-h-[300px] overflow-y-auto p-2 space-y-1.5">
           {snippets.map((s) => {
-            const style = SOURCE_LABELS[s.source];
+            const style = SOURCE_LABELS[s.source] || {
+              label: s.source?.toUpperCase() || "INFO",
+              color: "text-zinc-400 bg-zinc-950/50 border-zinc-800/30"
+            };
             return (
               <div
                 key={s.id}

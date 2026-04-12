@@ -1,6 +1,5 @@
 import asyncio
 import os
-import json
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, UploadFile, File
 from pydantic import BaseModel
@@ -10,7 +9,7 @@ from google.genai.types import GenerateContentConfig
 router = APIRouter()
 
 _executor = ThreadPoolExecutor(max_workers=4)
-GEMINI_TIMEOUT = 15
+GEMINI_TIMEOUT = 45
 
 
 class TranscribeResponse(BaseModel):

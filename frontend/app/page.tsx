@@ -6,6 +6,7 @@ import EditorPanel from "./components/EditorPanel";
 import LatexPreview from "./components/LatexPreview";
 import SiriBubble from "./components/SiriBubble";
 import ContextTray, { ContextSnippet } from "./components/ContextTray";
+import SelectionPopup from "./components/SelectionPopup";
 import {
   sendChatMessage,
   transcribeAudio,
@@ -41,6 +42,7 @@ export default function Home() {
   const [panelWidths, setPanelWidths] = useState([25, 40, 35]);
   const isDraggingDivider = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const previewPanelRef = useRef<HTMLDivElement>(null);
 
   // --- Draggable dividers ---
   const handleDividerMouseDown = useCallback((dividerIndex: number) => {
@@ -66,7 +68,6 @@ export default function Home() {
           next[1] = Math.max(15, next[1] - diff);
         } else {
           // Dragging between panel 1 and 2
-          const boundary = next[0] + next[1];
           const newBoundary = Math.max(next[0] + 15, Math.min(90, pct));
           next[1] = newBoundary - next[0];
           next[2] = Math.max(10, 100 - newBoundary);
@@ -112,16 +113,6 @@ export default function Home() {
       .map((s) => `[From ${s.source}]: ${s.text}`)
       .join("\n\n");
   }, [contextSnippets]);
-
-  // --- Text selection handler for editor/preview ---
-  const handleTextSelection = useCallback((source: "editor" | "preview") => {
-    const selection = window.getSelection();
-    const text = selection?.toString().trim();
-    if (text && text.length > 2) {
-      addContextSnippet(source, text);
-      selection?.removeAllRanges();
-    }
-  }, [addContextSnippet]);
 
   // --- Sessions ---
   const refreshSessions = useCallback(async () => {
@@ -341,7 +332,7 @@ export default function Home() {
         />
 
         {/* Middle: Monaco Editor */}
-        <div className="flex flex-col overflow-hidden" style={{ width: `${panelWidths[1]}%` }}>
+        <div className="flex flex-col overflow-hidden relative" style={{ width: `${panelWidths[1]}%` }}>
           <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <span>{pendingDocument ? "Review Changes" : "Editor"}</span>
@@ -350,13 +341,6 @@ export default function Home() {
               )}
             </div>
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => handleTextSelection("editor")}
-                className="text-[9px] text-zinc-500 hover:text-indigo-400 px-1.5 py-0.5 rounded hover:bg-zinc-800 mr-1"
-                title="Send selected text to AI"
-              >
-                Send
-              </button>
               <button onClick={() => setEditorFontSize((s) => Math.max(10, s - 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">-</button>
               <span className="text-[9px] text-zinc-600 w-5 text-center">{editorFontSize}</span>
               <button onClick={() => setEditorFontSize((s) => Math.min(28, s + 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">+</button>
@@ -380,29 +364,21 @@ export default function Home() {
         />
 
         {/* Right: KaTeX Preview */}
-        <div className="flex flex-col overflow-hidden" style={{ width: `${panelWidths[2]}%` }}>
+        <div ref={previewPanelRef} className="flex flex-col overflow-hidden relative" style={{ width: `${panelWidths[2]}%` }}>
           <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between shrink-0">
             <span>Preview</span>
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => handleTextSelection("preview")}
-                className="text-[9px] text-zinc-500 hover:text-indigo-400 px-1.5 py-0.5 rounded hover:bg-zinc-800 mr-1"
-                title="Send selected text to AI"
-              >
-                Send
-              </button>
               <button onClick={() => setPreviewFontSize((s) => Math.max(10, s - 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">-</button>
               <span className="text-[9px] text-zinc-600 w-5 text-center">{previewFontSize}</span>
               <button onClick={() => setPreviewFontSize((s) => Math.min(32, s + 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">+</button>
             </div>
           </div>
-          <div onMouseUp={() => handleTextSelection("preview")} className="flex-1 overflow-hidden flex flex-col">
-            <LatexPreview
-              latex={pendingDocument || document}
-              fontSize={previewFontSize}
-              className="flex-1 bg-zinc-900/40 overflow-auto latex-preview"
-            />
-          </div>
+          <LatexPreview
+            latex={pendingDocument || document}
+            fontSize={previewFontSize}
+            className="flex-1 bg-zinc-900/40 overflow-auto latex-preview"
+          />
+          <SelectionPopup containerRef={previewPanelRef} source="preview" onSendToAI={addContextSnippet} />
         </div>
       </div>
 
