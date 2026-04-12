@@ -5,3 +5,4 @@ pydantic
 google-cloud-aiplatform
 google-cloud-speech
 sympy
+httpx

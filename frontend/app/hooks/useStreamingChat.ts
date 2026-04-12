@@ -12,7 +12,9 @@ interface UseStreamingChatReturn {
     message: string,
     document: string,
     sessionId?: string,
-    context?: string
+    context?: string,
+    mode?: "edit" | "tutor",
+    imagesBase64?: string[]
   ) => Promise<void>;
   clearPending: () => void;
 }
@@ -25,20 +27,22 @@ export default function useStreamingChat(): UseStreamingChatReturn {
     new_document: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const replyRef = useRef("");
+  const rawTextRef = useRef("");
 
   const sendMessage = useCallback(
     async (
       message: string,
       document: string,
       sessionId?: string,
-      context?: string
+      context?: string,
+      mode: "edit" | "tutor" = "edit",
+      imagesBase64?: string[]
     ) => {
       setIsStreaming(true);
       setStreamedReply("");
       setPendingDocument(null);
       setError(null);
-      replyRef.current = "";
+      rawTextRef.current = "";
 
       try {
         await streamChat(
@@ -46,14 +50,20 @@ export default function useStreamingChat(): UseStreamingChatReturn {
           document,
           (event: StreamEvent) => {
             switch (event.type) {
-              case "reply":
-                if (event.chunk) {
-                  replyRef.current += (replyRef.current ? " " : "") + event.chunk;
-                  setStreamedReply(replyRef.current);
+              case "chunk":
+                // Raw streamed text from Gemini (JSON being built up)
+                if (event.text) {
+                  rawTextRef.current += event.text;
+                  // Show a "thinking" indicator while streaming
+                  setStreamedReply("Thinking...");
                 }
                 break;
               case "document":
-                if (event.action && event.new_document !== undefined) {
+                // Final parsed result — show the reply and set pending document
+                if (event.reply) {
+                  setStreamedReply(event.reply);
+                }
+                if (event.action && event.action !== "no_change" && event.new_document !== undefined) {
                   setPendingDocument({
                     action: event.action,
                     new_document: event.new_document,
@@ -68,7 +78,9 @@ export default function useStreamingChat(): UseStreamingChatReturn {
             }
           },
           sessionId,
-          context
+          context,
+          mode,
+          imagesBase64
         );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Stream failed");

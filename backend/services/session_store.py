@@ -10,8 +10,15 @@ SESSIONS_DIR.mkdir(exist_ok=True)
 
 
 def create_session() -> dict:
-    session_id = str(uuid.uuid4())[:8]
+    session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     session_dir = SESSIONS_DIR / session_id
+    # Ensure uniqueness in case of rapid clicks
+    counter = 1
+    while session_dir.exists():
+        session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + f"_{counter}"
+        session_dir = SESSIONS_DIR / session_id
+        counter += 1
+    
     session_dir.mkdir(parents=True)
 
     state = {
@@ -56,6 +63,15 @@ def save_pdf(session_id: str, pdf_bytes: bytes) -> bool:
 def get_pdf_path(session_id: str) -> Path | None:
     pdf_path = SESSIONS_DIR / session_id / "document.pdf"
     return pdf_path if pdf_path.exists() else None
+
+
+def delete_session(session_id: str) -> bool:
+    import shutil
+    session_dir = SESSIONS_DIR / session_id
+    if not session_dir.exists():
+        return False
+    shutil.rmtree(session_dir)
+    return True
 
 
 def list_sessions() -> list[dict]:

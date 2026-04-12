@@ -47,6 +47,11 @@ export async function listSessions(): Promise<Array<{ id: string; updated_at: st
   return res.json();
 }
 
+export async function deleteSession(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/session/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to delete session: ${res.status}`);
+}
+
 export async function uploadPdf(sessionId: string, file: File): Promise<void> {
   const formData = new FormData();
   formData.append("file", file);
@@ -66,12 +71,14 @@ export async function sendChatMessage(
   message: string,
   document: string,
   sessionId?: string,
-  context?: string
+  context?: string,
+  mode: "edit" | "tutor" = "edit",
+  imagesBase64?: string[]
 ): Promise<AgentResponse> {
   const res = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, document, session_id: sessionId, context }),
+    body: JSON.stringify({ message, document, session_id: sessionId, context, mode, images: imagesBase64 }),
   });
 
   if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -81,11 +88,11 @@ export async function sendChatMessage(
 // --- Streaming Chat ---
 
 export interface StreamEvent {
-  type: "reply" | "explanation" | "document" | "error" | "done";
-  chunk?: string;
+  type: "chunk" | "document" | "error" | "done";
   text?: string;
   action?: string;
   new_document?: string;
+  reply?: string;
   message?: string;
 }
 
@@ -94,12 +101,14 @@ export async function streamChat(
   document: string,
   onEvent: (event: StreamEvent) => void,
   sessionId?: string,
-  context?: string
+  context?: string,
+  mode: "edit" | "tutor" = "edit",
+  imagesBase64?: string[]
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, document, session_id: sessionId, context }),
+    body: JSON.stringify({ message, document, session_id: sessionId, context, mode, images: imagesBase64 }),
   });
 
   if (!res.ok) throw new Error(`Stream error: ${res.status}`);
@@ -143,6 +152,21 @@ export async function streamChat(
       }
     }
   }
+}
+
+// --- Compile to PDF ---
+
+export async function compileToPdf(source: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/compile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || `Compile error: ${res.status}`);
+  }
+  return res.blob();
 }
 
 // --- Voice (Gemini transcription) ---

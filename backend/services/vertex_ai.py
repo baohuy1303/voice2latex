@@ -186,6 +186,8 @@ def call_gemini(
     user_message: str,
     document: str,
     history: list[dict] | None = None,
+    mode: str = "edit",
+    images: list[str] | None = None,
 ) -> dict:
     """Call Gemini with tool calling support and structured JSON output.
 
@@ -211,6 +213,77 @@ def call_gemini(
                 )
             )
 
+    if images:
+        import base64
+        image_parts = []
+        for img_b64 in images:
+            try:
+                # We assume image/jpeg for broad base64 blob support
+                image_parts.append(genai.types.Part.from_bytes(data=base64.b64decode(img_b64), mime_type="image/jpeg"))
+            except Exception:
+                pass
+        if image_parts:
+            contents.append(genai.types.Content(role="user", parts=image_parts))
+
+    # --- TUTOR MODE: pure conversation, no editing ---
+    if mode == "tutor":
+        tutor_prompt = f"""The student's current LaTeX document for reference (DO NOT modify it):
+```latex
+{document}
+```
+
+Student's question: {user_message}"""
+
+        contents.append(
+            genai.types.Content(
+                role="user",
+                parts=[genai.types.Part(text=tutor_prompt)],
+            )
+        )
+
+        tutor_instruction = (
+            "You are a concise math tutor. The student is working on a LaTeX document. "
+            "You can see their document, any uploaded images, and any highlighted PDF text they shared.\n\n"
+            "RULES:\n"
+            "- Give clear, focused explanations. Be concise — 2-4 sentences per concept is ideal.\n"
+            "- Point out mistakes and explain briefly why they're wrong.\n"
+            "- Reference specific equations in their document when relevant.\n"
+            "- Use $...$ for inline math and $$...$$ for display math.\n"
+            "- You may use markdown: **bold**, *italic*, short bullet lists.\n\n"
+            "RESPONSE FORMAT:\n"
+            "Respond with JSON: {\"action\": \"no_change\", \"new_document\": \"<same document unchanged>\", \"reply\": \"<your concise teaching response>\"}"
+        )
+
+        config = GenerateContentConfig(
+            system_instruction=tutor_instruction,
+            temperature=0.4,
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+
+        final_text = response.text or ""
+        try:
+            result = json.loads(final_text)
+        except json.JSONDecodeError:
+            json_match = re.search(r'\{[\s\S]*\}', final_text)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    result = {"action": "no_change", "new_document": document, "reply": final_text}
+            else:
+                result = {"action": "no_change", "new_document": document, "reply": final_text or "I'm here to help!"}
+
+        # Force no document changes in tutor mode
+        result["action"] = "no_change"
+        result["new_document"] = document
+        return result
+
+    # --- EDIT MODE: full pipeline with tools ---
     user_prompt = f"""Current document:
 ```latex
 {document}
@@ -350,44 +423,121 @@ def call_gemini_stream(
     document: str,
     history: list[dict] | None = None,
     context: str | None = None,
+    mode: str = "edit",
+    images: list[str] | None = None,
 ):
-    """Streaming version of call_gemini. Yields dicts for SSE events.
+    """True streaming: streams raw Gemini text chunks, then parses JSON at the end.
 
-    Strategy:
-    1. First pass: non-streaming call with tools to handle any tool calls
-    2. Once we have the final text, stream the reply portion
-    3. Send the document update at the end
-
-    We can't truly stream tool-calling turns, so we do tool calls synchronously
-    then yield the final result in chunks.
+    Yields SSE events:
+    - {"type": "chunk", "text": "..."} — raw streamed text
+    - {"type": "document", "action": "...", "new_document": "..."} — parsed result
+    - {"type": "done"}
     """
-    # Use the non-streaming call_gemini for the actual work (handles tools)
+    import time
+
+    client = get_client()
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+    contents = []
+
+    if history:
+        for msg in history:
+            contents.append(
+                genai.types.Content(
+                    role=msg["role"],
+                    parts=[genai.types.Part(text=msg["content"])],
+                )
+            )
+
+    if images:
+        import base64
+        image_parts = []
+        for img_b64 in images:
+            try:
+                image_parts.append(genai.types.Part.from_bytes(data=base64.b64decode(img_b64), mime_type="image/jpeg"))
+            except Exception:
+                pass
+        if image_parts:
+            contents.append(genai.types.Content(role="user", parts=image_parts))
+
     user_msg = user_message
     if context:
         user_msg = f"Reference material (from uploaded PDF):\n\"\"\"\n{context}\n\"\"\"\n\nUser command: {user_message}"
 
-    result = call_gemini(user_msg, document, history)
+    user_prompt = f"""Current document:
+```latex
+{document}
+```
 
-    # Stream the reply text in chunks
-    reply = result.get("reply", "")
-    words = reply.split(" ")
-    chunk = ""
-    for i, word in enumerate(words):
-        chunk += (" " if chunk else "") + word
-        if len(chunk) >= 15 or i == len(words) - 1:
-            yield {"type": "reply", "chunk": chunk}
-            chunk = ""
+User command: {user_msg}
 
-    # Send explanation if present
-    explanation = result.get("explanation")
-    if explanation:
-        yield {"type": "explanation", "text": explanation}
+Respond with JSON: {{"action": "replace_all"|"no_change", "new_document": "<full updated document>", "reply": "<short confirmation>"}}"""
 
-    # Send the document update
+    contents.append(
+        genai.types.Content(
+            role="user",
+            parts=[genai.types.Part(text=user_prompt)],
+        )
+    )
+
+    sys_instruction = SYSTEM_PROMPT
+    if mode == "tutor":
+        sys_instruction = (
+            "You are a concise math tutor. The student is working on a LaTeX document. "
+            "You can see their document, any uploaded images, and any highlighted PDF text they shared.\n\n"
+            "RULES:\n"
+            "- Give clear, focused explanations. Be concise — 2-4 sentences per concept is ideal.\n"
+            "- Point out mistakes and explain briefly why they're wrong.\n"
+            "- Reference specific equations in their document when relevant.\n"
+            "- Use $...$ for inline math and $$...$$ for display math.\n"
+            "- You may use markdown: **bold**, *italic*, short bullet lists.\n\n"
+            "RESPONSE FORMAT:\n"
+            "Respond with JSON: {\"action\": \"no_change\", \"new_document\": \"<same document unchanged>\", \"reply\": \"<your concise teaching response>\"}"
+        )
+
+    config = GenerateContentConfig(
+        system_instruction=sys_instruction,
+        temperature=0.2,
+    )
+
+    # Stream the response
+    full_text = ""
+    try:
+        for chunk in client.models.generate_content_stream(
+            model=model,
+            contents=contents,
+            config=config,
+        ):
+            if chunk.text:
+                full_text += chunk.text
+                yield {"type": "chunk", "text": chunk.text}
+    except Exception as e:
+        yield {"type": "error", "message": str(e)[:200]}
+        yield {"type": "done"}
+        return
+
+    # Parse the accumulated JSON
+    try:
+        result = json.loads(full_text)
+    except json.JSONDecodeError:
+        json_match = re.search(r'\{[\s\S]*\}', full_text)
+        if json_match:
+            try:
+                result = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                result = {"action": "no_change", "new_document": document, "reply": full_text}
+        else:
+            result = {"action": "no_change", "new_document": document, "reply": full_text or "No response"}
+
+    # Sanitize
+    if "new_document" in result:
+        result["new_document"] = sanitize_latex(result["new_document"])
+
     yield {
         "type": "document",
         "action": result.get("action", "no_change"),
         "new_document": result.get("new_document", document),
+        "reply": result.get("reply", ""),
     }
 
     yield {"type": "done"}

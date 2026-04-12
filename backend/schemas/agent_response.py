@@ -15,6 +15,8 @@ class ChatRequest(BaseModel):
     document: str
     session_id: Optional[str] = None
     context: Optional[str] = None
+    mode: str = "edit"
+    images: Optional[list[str]] = None
 
 
 class AgentResponse(BaseModel):

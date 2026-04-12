@@ -108,6 +108,11 @@ Matrix:
 $$A = \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}$$
 ```
 
+## PDF Context
+- When reference material from a PDF is provided, use it to understand what the user wants.
+- The user may highlight text from a PDF and say "convert this to LaTeX", "add this to my document", or "solve this".
+- Convert the highlighted PDF text into proper KaTeX-compatible LaTeX and add it to the document.
+
 ## Context Awareness
 - The user may refer to parts of the document by name (e.g., "question 1", "the integral", "the second equation").
 - Resolve these references against the current document content.
