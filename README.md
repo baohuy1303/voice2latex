@@ -1,10 +1,10 @@
 # StemFlow
 
 ## Inspiration
-Students in STEM do not just struggle with solving problems — they struggle with submitting them. They work in PDFs or on paper, then waste time translating everything into LaTeX or code. For professors and researchers, it is the reverse: turning rough STEM work into clean, structured documents.
+Students in STEM do not just struggle with solving problems, they struggle with submitting them. They work in PDFs or on paper, then waste time translating everything into LaTeX or code. For professors and researchers, it is the reverse: turning rough STEM work into clean, structured documents.
 
 ## What it does
-StemFlow is a STEM workspace that combines voice transcription, PDF context extraction, AI-powered reasoning, and LaTeX editing into one seamless flow. It acts as an agentic workspace engineered for how STEM work actually happens—reducing the friction between analytical thought and structured digital documentation.
+StemFlow is a STEM workspace that combines voice transcription, PDF context extraction, AI-powered reasoning, and LaTeX editing into one seamless flow. It acts as an agentic workspace engineered for how STEM work actually happens, reducing the friction between analytical thought and structured digital documentation.
 
 ## How we built it
 StemFlow features a Next.js (TypeScript) frontend coupled with a FastAPI backend. We utilized Google Gemini (Vertex AI) to power the core agentic reasoning loops. A multi-modal architecture was designed to parse text, images, and speech (Google Cloud Speech-to-Text). The backend leverages Python's SymPy library as an isolated deterministic solver, ensuring the AI can definitively evaluate complex mathematics before generating final LaTeX structures.
@@ -96,6 +96,10 @@ npm run dev
 ```
 
 Navigate to `http://localhost:3000` in your browser.
+
+## Architecture
+
+For a detailed breakdown of the agentic AI pipeline, data flows, tool integrations, and Mermaid.js system diagrams, see **[agentic_tools.md](./agentic_tools.md)**.
 
 ## Contributors
 - Huy B. Huynh - https://github.com/baohuy1303
