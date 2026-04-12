@@ -312,12 +312,7 @@ export default function Home() {
     }
   }, [isRecording, stopRecording, startRecording, handleSend]);
 
-  // Clean up compiled PDF blob URL on unmount
-  useEffect(() => {
-    return () => {
-      if (compiledPdfUrl) URL.revokeObjectURL(compiledPdfUrl);
-    };
-  }, [compiledPdfUrl]);
+  const prevPdfUrlRef = useRef<string | null>(null);
 
   const handleCompile = useCallback(async () => {
     setIsCompiling(true);
@@ -325,22 +320,24 @@ export default function Home() {
     try {
       const blob = await compileToPdf(document);
 
-      // Revoke previous URL before creating a new one
-      setCompiledPdfUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      // Revoke old URL if any
+      if (prevPdfUrlRef.current) {
+        URL.revokeObjectURL(prevPdfUrlRef.current);
+      }
 
       const url = URL.createObjectURL(blob);
+      prevPdfUrlRef.current = url;
+
       setCompiledPdfUrl(url);
       setPreviewTab("pdf");
 
-      // Trigger download (URL stays alive for the iframe)
+      // Trigger download
       const a = window.document.createElement("a");
       a.href = url;
       a.download = "document.pdf";
       a.click();
     } catch (err) {
+      console.error("Compile error:", err);
       setCompileError(err instanceof Error ? err.message : "Compile failed");
     } finally {
       setIsCompiling(false);
@@ -504,14 +501,12 @@ export default function Home() {
               >
                 Preview
               </button>
-              {compiledPdfUrl && (
-                <button
-                  onClick={() => setPreviewTab("pdf")}
-                  className={`px-2 py-0.5 rounded font-medium uppercase tracking-wider transition-colors ${previewTab === "pdf" ? "text-zinc-200 bg-zinc-700/60" : "text-zinc-500 hover:text-zinc-300"}`}
-                >
-                  PDF
-                </button>
-              )}
+              <button
+                onClick={() => setPreviewTab("pdf")}
+                className={`px-2 py-0.5 rounded font-medium uppercase tracking-wider transition-colors ${previewTab === "pdf" ? "text-zinc-200 bg-zinc-700/60" : "text-zinc-500 hover:text-zinc-300"}`}
+              >
+                PDF
+              </button>
             </div>
             {previewTab === "katex" && (
               <div className="flex items-center gap-1">
@@ -530,12 +525,17 @@ export default function Home() {
               />
               <SelectionPopup containerRef={previewPanelRef} source="preview" onSendToAI={addContextSnippet} />
             </>
-          ) : (
+          ) : compiledPdfUrl ? (
             <iframe
-              src={compiledPdfUrl!}
+              src={compiledPdfUrl}
               className="flex-1 w-full border-0"
               title="Compiled PDF"
             />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 text-xs gap-2">
+              <span>No PDF compiled yet</span>
+              <span className="text-zinc-700">Click &quot;Compile &amp; Download&quot; to generate a PDF</span>
+            </div>
           )}
         </div>
       </div>
