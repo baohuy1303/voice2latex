@@ -7,6 +7,23 @@ export interface AgentResponse {
   explanation?: string;
 }
 
+export async function transcribeAudio(blob: Blob): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", blob, "recording.webm");
+
+  const res = await fetch(`${API_BASE}/voice/transcribe`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Transcription error: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data.transcript;
+}
+
 export async function sendChatMessage(
   message: string,
   document: string

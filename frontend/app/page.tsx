@@ -5,7 +5,7 @@ import ChatPanel, { ChatMessage } from "./components/ChatPanel";
 import LatexPreview from "./components/LatexPreview";
 import { sendChatMessage } from "./lib/api";
 
-const SAMPLE_LATEX = "\\int_0^1 x^2 \\, dx = \\frac{1}{3}";
+const SAMPLE_LATEX = "$$\\int_0^1 x^2 \\, dx = \\frac{1}{3}$$";
 
 export default function Home() {
   const [mode, setMode] = useState<"chat" | "voice">("chat");
