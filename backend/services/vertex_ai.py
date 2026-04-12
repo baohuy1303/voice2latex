@@ -313,7 +313,22 @@ Student's question: {user_message}"""
         return result
 
     # --- EDIT MODE: full pipeline with tools ---
-    user_prompt = f"""Current document:
+    _explicit_solve = any(kw in user_message.lower() for kw in ("solve", "simplify", "differentiate", "integrate", "calculate", "compute", "find", "evaluate", "answer"))
+
+    if images and not _explicit_solve:
+        user_prompt = f"""Current document:
+```latex
+{document}
+```
+
+TASK: The user has attached an image. Your ONLY job is to read the image and transcribe what is visibly written into LaTeX — do NOT solve, simplify, answer, or add anything beyond what is literally shown in the image. Append the transcribed LaTeX to the document.
+
+User message: {user_message}
+
+Respond as JSON:
+{{"action": "replace_all", "new_document": "<document with transcribed content appended>", "reply": "<one sentence confirming what you transcribed>"}}"""
+    else:
+        user_prompt = f"""Current document:
 ```latex
 {document}
 ```
@@ -321,10 +336,7 @@ Student's question: {user_message}"""
 User command: {user_message}
 
 If the user asks to solve, simplify, differentiate, or integrate, use the appropriate math tool. Then produce your final response as JSON with this exact schema:
-{{"action": "replace_all"|"no_change", "new_document": "<full updated document>", "reply": "<short confirmation>", "explanation": "<optional step-by-step>"}}"""
-
-    if images:
-        user_prompt += "\n\nNOTE: Image(s) are attached. Transcribe what is written in the image exactly as LaTeX. Do NOT solve or answer — only extract what is visibly shown, unless the user explicitly asks you to solve or answer."
+{{"action": "replace_all"|"no_change", "new_document": "<full updated document>", "reply": "<short confirmation>", "explanation": "<optional step-by-step>"}}\""""
 
     contents.append(
         genai.types.Content(
