@@ -10,9 +10,13 @@ import SelectionPopup from "./components/SelectionPopup";
 import GraphCard from "./components/GraphCard";
 import {
   buildGraphData,
-  extractGraphExpression,
-  getGraphCommandExpression,
+  createGraphFunction,
+  DEFAULT_GRAPH_VIEWPORT,
+  extractPrimaryGraphExpression,
+  getGraphCommandExpressions,
+  GraphFunction,
   GraphRenderData,
+  GraphViewport,
 } from "./lib/graphing";
 import {
   sendChatMessage,
@@ -45,7 +49,8 @@ export default function Home() {
   const [pendingDocument, setPendingDocument] = useState<string | null>(null);
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [previewFontSize, setPreviewFontSize] = useState(16);
-  const [graph, setGraph] = useState<GraphRenderData | null>(null);
+  const [graphFunctions, setGraphFunctions] = useState<GraphFunction[]>([]);
+  const [graphViewport, setGraphViewport] = useState<GraphViewport>(DEFAULT_GRAPH_VIEWPORT);
   const [graphError, setGraphError] = useState<string | null>(null);
   const { isRecording, startRecording, stopRecording } = useMicrophone();
   const [mode, setMode] = useState<"edit" | "tutor">("edit");
@@ -55,6 +60,7 @@ export default function Home() {
   const [previewTab, setPreviewTab] = useState<"katex" | "pdf">("katex");
 
   const activeDocument = pendingDocument || document;
+  const graph = graphFunctions.length > 0 ? buildGraphData(graphFunctions, graphViewport) : null;
 
   const [panelWidths, setPanelWidths] = useState([25, 40, 35]);
   const isDraggingDivider = useRef<number | null>(null);
@@ -186,7 +192,8 @@ export default function Home() {
     setPdfFile(null);
     setContextSnippets([]);
     setPendingDocument(null);
-    setGraph(null);
+    setGraphFunctions([]);
+    setGraphViewport(DEFAULT_GRAPH_VIEWPORT);
     setGraphError(null);
     setCompiledPdfFile(null);
     setPreviewTab("katex");
@@ -209,7 +216,8 @@ export default function Home() {
       setPdfFile(null);
       setContextSnippets([]);
       setPendingDocument(null);
-      setGraph(null);
+      setGraphFunctions([]);
+      setGraphViewport(DEFAULT_GRAPH_VIEWPORT);
       setGraphError(null);
       setCompiledPdfFile(null);
       setPreviewTab("katex");
@@ -225,7 +233,8 @@ export default function Home() {
     setDocumentHistory([]);
     setContextSnippets([]);
     setPendingDocument(null);
-    setGraph(null);
+    setGraphFunctions([]);
+    setGraphViewport(DEFAULT_GRAPH_VIEWPORT);
     setGraphError(null);
     setCompiledPdfFile(null);
     setPreviewTab("katex");
@@ -263,14 +272,36 @@ export default function Home() {
     });
   }, []);
 
-  const graphExpression = useCallback((expression: string) => {
+  const addGraphExpressions = useCallback((expressions: string[]) => {
+    if (expressions.length === 0) {
+      setGraphError("I couldn't find a simple y = f(x) expression to graph.");
+      return {
+        ok: false as const,
+        message: "I couldn't find a graphable function. Try `graph y = x^2` or use Graph Current.",
+      };
+    }
+
     try {
-      const nextGraph = buildGraphData(expression);
-      setGraph(nextGraph);
+      setGraphFunctions((prev) => {
+        const next = [...prev];
+
+        for (const expression of expressions) {
+          const nextFunction = createGraphFunction(expression, next.length);
+          next.push(nextFunction);
+        }
+
+        return next;
+      });
+      setGraphViewport((prev) => ({ ...prev }));
       setGraphError(null);
-      return { ok: true as const, message: `Graphing ${nextGraph.displayExpression}.` };
+      return {
+        ok: true as const,
+        message:
+          expressions.length === 1
+            ? `Graphing ${expressions[0]}.`
+            : `Graphing ${expressions.length} functions together.`,
+      };
     } catch (error) {
-      setGraph(null);
       setGraphError(error instanceof Error ? error.message : "I couldn't graph that expression.");
       return {
         ok: false as const,
@@ -279,15 +310,42 @@ export default function Home() {
     }
   }, []);
 
+  const handleAddGraphExpression = useCallback(
+    (expression: string) => {
+      addGraphExpressions([expression]);
+    },
+    [addGraphExpressions]
+  );
+
   const handleGraphCurrent = useCallback(() => {
-    const expression = extractGraphExpression(activeDocument);
+    const expression = extractPrimaryGraphExpression(activeDocument);
     if (!expression) {
-      setGraph(null);
       setGraphError("I couldn't find a simple y = f(x) expression in the current document.");
       return;
     }
-    graphExpression(expression);
-  }, [activeDocument, graphExpression]);
+
+    addGraphExpressions([expression]);
+  }, [activeDocument, addGraphExpressions]);
+
+  const handleRemoveGraphFunction = useCallback((id: string) => {
+    setGraphFunctions((prev) => prev.filter((graphFn) => graphFn.id !== id));
+    setGraphError(null);
+  }, []);
+
+  const handleClearGraph = useCallback(() => {
+    setGraphFunctions([]);
+    setGraphViewport(DEFAULT_GRAPH_VIEWPORT);
+    setGraphError(null);
+  }, []);
+
+  const handleViewportChange = useCallback((nextViewport: GraphViewport) => {
+    setGraphViewport(nextViewport);
+  }, []);
+
+  const handleResetGraphView = useCallback(() => {
+    setGraphViewport(DEFAULT_GRAPH_VIEWPORT);
+    setGraphError(null);
+  }, []);
 
   const handleSend = useCallback(
     async (message: string, imagesBase64?: string[]) => {
@@ -295,17 +353,16 @@ export default function Home() {
 
       setMessages((prev) => [...prev, { role: "user", content: message }]);
 
-      const graphRequest = getGraphCommandExpression(message, activeDocument);
+      const graphRequests = getGraphCommandExpressions(message, activeDocument);
       if (/^graph\b/i.test(message.trim())) {
-        if (!graphRequest) {
+        if (!graphRequests || graphRequests.length === 0) {
           const reply = "I couldn't find a graphable function. Try `graph y = x^2` or use Graph Current.";
-          setGraph(null);
           setGraphError("I couldn't find a simple y = f(x) expression in the current document.");
           setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
           return;
         }
 
-        const result = graphExpression(graphRequest);
+        const result = addGraphExpressions(graphRequests);
         setMessages((prev) => [...prev, { role: "assistant", content: result.message }]);
         return;
       }
@@ -335,7 +392,7 @@ export default function Home() {
         setIsLoading(false);
       }
     },
-    [activeDocument, clearAllContext, document, getContextString, graphExpression, isLoading, mode, sessionId]
+    [activeDocument, addGraphExpressions, clearAllContext, document, getContextString, isLoading, mode, sessionId]
   );
 
   const handleAcceptDiff = useCallback(() => {
@@ -605,13 +662,15 @@ export default function Home() {
           )}
           <GraphCard
             graph={graph}
+            functions={graphFunctions}
+            viewport={graphViewport}
             error={graphError}
             onGraphCurrent={handleGraphCurrent}
-            onGraphExpression={graphExpression}
-            onClear={() => {
-              setGraph(null);
-              setGraphError(null);
-            }}
+            onAddExpression={handleAddGraphExpression}
+            onRemoveFunction={handleRemoveGraphFunction}
+            onClearAll={handleClearGraph}
+            onViewportChange={handleViewportChange}
+            onResetView={handleResetGraphView}
           />
         </div>
       </div>
