@@ -1,16 +1,39 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import katex from "katex";
 
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  explanation?: string;
 }
 
 interface ChatPanelProps {
   messages: ChatMessage[];
   onSend: (message: string) => void;
   isLoading?: boolean;
+}
+
+function renderInlineKatex(text: string): string {
+  // Replace $$...$$ with display math, then $...$ with inline math
+  let html = text.replace(/\$\$([^$]+)\$\$/g, (_match, expr) => {
+    try {
+      return katex.renderToString(expr, { displayMode: true, throwOnError: false });
+    } catch {
+      return `$$${expr}$$`;
+    }
+  });
+
+  html = html.replace(/\$([^$]+)\$/g, (_match, expr) => {
+    try {
+      return katex.renderToString(expr, { displayMode: false, throwOnError: false });
+    } catch {
+      return `$${expr}$`;
+    }
+  });
+
+  return html;
 }
 
 export default function ChatPanel({ messages, onSend, isLoading = false }: ChatPanelProps) {
@@ -38,24 +61,38 @@ export default function ChatPanel({ messages, onSend, isLoading = false }: ChatP
           </p>
         )}
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
+          <div key={i}>
             <div
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-800 text-zinc-200"
-              }`}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              {msg.content}
+              <div
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-zinc-800 text-zinc-200"
+                }`}
+                dangerouslySetInnerHTML={
+                  msg.role === "assistant"
+                    ? { __html: renderInlineKatex(msg.content) }
+                    : undefined
+                }
+              >
+                {msg.role === "user" ? msg.content : undefined}
+              </div>
             </div>
+            {msg.explanation && (
+              <div className="mt-1 ml-1">
+                <div
+                  className="bg-zinc-850 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300"
+                  dangerouslySetInnerHTML={{ __html: renderInlineKatex(msg.explanation) }}
+                />
+              </div>
+            )}
           </div>
         ))}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-zinc-800 text-zinc-400 rounded-lg px-3 py-2 text-sm">
+            <div className="bg-zinc-800 text-zinc-400 rounded-lg px-3 py-2 text-sm animate-pulse">
               Thinking...
             </div>
           </div>

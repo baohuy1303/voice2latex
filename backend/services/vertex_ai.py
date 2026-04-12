@@ -3,8 +3,9 @@ import json
 import re
 from pathlib import Path
 from google import genai
-from google.genai.types import GenerateContentConfig
+from google.genai.types import GenerateContentConfig, Tool, FunctionDeclaration
 from services.latex_sanitizer import sanitize_latex
+from services.sympy_solver import TOOL_FUNCTIONS
 
 SYSTEM_PROMPT = (Path(__file__).parent.parent / "prompts" / "system_prompt.txt").read_text()
 
@@ -22,9 +23,107 @@ RESPONSE_SCHEMA = {
     "required": ["action", "new_document", "reply"],
 }
 
+# SymPy tool declarations for Vertex AI
+MATH_TOOLS = Tool(
+    function_declarations=[
+        FunctionDeclaration(
+            name="solve_equation",
+            description="Solve a mathematical equation for a given variable using SymPy. Use this for finding roots, solutions to equations, systems of equations.",
+            parameters={
+                "type": "OBJECT",
+                "properties": {
+                    "equation_latex": {
+                        "type": "STRING",
+                        "description": "The equation in LaTeX format (e.g., 'x^2 - 4 = 0')",
+                    },
+                    "variable": {
+                        "type": "STRING",
+                        "description": "The variable to solve for (default: 'x')",
+                    },
+                    "sympy_expression": {
+                        "type": "STRING",
+                        "description": "The equation as a SymPy-parseable string (e.g., 'x**2 - 4'). Fallback if LaTeX parsing fails.",
+                    },
+                },
+                "required": ["equation_latex", "sympy_expression"],
+            },
+        ),
+        FunctionDeclaration(
+            name="simplify_expression",
+            description="Simplify a mathematical expression using SymPy. Use for algebraic simplification, trigonometric identities, etc.",
+            parameters={
+                "type": "OBJECT",
+                "properties": {
+                    "expression_latex": {
+                        "type": "STRING",
+                        "description": "The expression in LaTeX format",
+                    },
+                    "sympy_expression": {
+                        "type": "STRING",
+                        "description": "The expression as a SymPy-parseable string. Fallback if LaTeX parsing fails.",
+                    },
+                },
+                "required": ["expression_latex", "sympy_expression"],
+            },
+        ),
+        FunctionDeclaration(
+            name="differentiate",
+            description="Compute the derivative of an expression with respect to a variable using SymPy.",
+            parameters={
+                "type": "OBJECT",
+                "properties": {
+                    "expression_latex": {
+                        "type": "STRING",
+                        "description": "The expression in LaTeX format",
+                    },
+                    "variable": {
+                        "type": "STRING",
+                        "description": "The variable to differentiate with respect to (default: 'x')",
+                    },
+                    "sympy_expression": {
+                        "type": "STRING",
+                        "description": "The expression as a SymPy-parseable string. Fallback if LaTeX parsing fails.",
+                    },
+                },
+                "required": ["expression_latex", "sympy_expression"],
+            },
+        ),
+        FunctionDeclaration(
+            name="integrate",
+            description="Compute the integral of an expression using SymPy. Supports both definite (with bounds) and indefinite integrals.",
+            parameters={
+                "type": "OBJECT",
+                "properties": {
+                    "expression_latex": {
+                        "type": "STRING",
+                        "description": "The expression in LaTeX format",
+                    },
+                    "variable": {
+                        "type": "STRING",
+                        "description": "The variable to integrate with respect to (default: 'x')",
+                    },
+                    "lower_bound": {
+                        "type": "STRING",
+                        "description": "Lower bound for definite integral (e.g., '0'). Omit for indefinite.",
+                    },
+                    "upper_bound": {
+                        "type": "STRING",
+                        "description": "Upper bound for definite integral (e.g., '1'). Omit for indefinite.",
+                    },
+                    "sympy_expression": {
+                        "type": "STRING",
+                        "description": "The expression as a SymPy-parseable string. Fallback if LaTeX parsing fails.",
+                    },
+                },
+                "required": ["expression_latex", "sympy_expression"],
+            },
+        ),
+    ]
+)
+
 # Known bad patterns that indicate KaTeX will fail
 BAD_PATTERNS = [
-    r'\\\[(?!\s*\\begin)',  # \[ as display math (not \[\begin)
+    r'\\\[(?!\s*\\begin)',
     r'\\vspace',
     r'\\hspace\{',
     r'\\newpage',
@@ -32,10 +131,11 @@ BAD_PATTERNS = [
     r'\\begin\{align\}',
     r'\\begin\{gather\}',
     r'\\begin\{multline\}',
-    r'\\\[\d+(\.\d+)?\s*em\]',  # \[1em] spacing hacks
+    r'\\\[\d+(\.\d+)?\s*em\]',
 ]
 
 _client = None
+MAX_TOOL_ITERATIONS = 3
 
 
 def get_client() -> genai.Client:
@@ -50,8 +150,6 @@ def get_client() -> genai.Client:
 
 
 def _has_bad_latex(latex: str) -> str | None:
-    """Check if LaTeX contains known KaTeX-incompatible patterns.
-    Returns the first bad pattern found, or None if clean."""
     for pattern in BAD_PATTERNS:
         match = re.search(pattern, latex)
         if match:
@@ -59,19 +157,29 @@ def _has_bad_latex(latex: str) -> str | None:
     return None
 
 
-def _call_gemini_raw(
-    contents: list,
-    config: GenerateContentConfig,
-    model: str,
-) -> dict:
-    """Make a single Gemini API call and parse the JSON response."""
-    client = get_client()
-    response = client.models.generate_content(
-        model=model,
-        contents=contents,
-        config=config,
-    )
-    return json.loads(response.text)
+def _execute_tool(function_name: str, args: dict) -> dict:
+    """Execute a SymPy tool function by name with a 10s timeout."""
+    import signal
+    import threading
+
+    func = TOOL_FUNCTIONS.get(function_name)
+    if not func:
+        return {"success": False, "error": f"Unknown tool: {function_name}"}
+
+    result = {"success": False, "error": "Computation timed out (10s)"}
+
+    def run():
+        nonlocal result
+        try:
+            result = func(**args)
+        except Exception as e:
+            result = {"success": False, "error": str(e)}
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    thread.join(timeout=10)
+
+    return result
 
 
 def call_gemini(
@@ -79,16 +187,19 @@ def call_gemini(
     document: str,
     history: list[dict] | None = None,
 ) -> dict:
-    """Call Gemini with structured JSON output for document editing.
+    """Call Gemini with tool calling support and structured JSON output.
 
     Pipeline:
-    1. Send request to Gemini
-    2. Sanitize the LaTeX output (fix common issues)
-    3. If still has bad patterns, retry once with fix instructions
+    1. Send request to Gemini with tools enabled (no response schema — tools + schema conflict)
+    2. If Gemini requests a tool call, execute it and return the result
+    3. Loop until Gemini produces a final text response (max 3 iterations)
+    4. Parse the final response as JSON, sanitize LaTeX
+    5. If bad patterns remain, retry once
     """
+    client = get_client()
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-    # Build the conversation contents
+    # Build contents
     contents = []
 
     if history:
@@ -105,7 +216,10 @@ def call_gemini(
 {document}
 ```
 
-User command: {user_message}"""
+User command: {user_message}
+
+If the user asks to solve, simplify, differentiate, or integrate, use the appropriate math tool. Then produce your final response as JSON with this exact schema:
+{{"action": "replace_all"|"no_change", "new_document": "<full updated document>", "reply": "<short confirmation>", "explanation": "<optional step-by-step>"}}"""
 
     contents.append(
         genai.types.Content(
@@ -114,41 +228,118 @@ User command: {user_message}"""
         )
     )
 
-    config = GenerateContentConfig(
+    # First try: with tools (no response_schema, since tools + schema can conflict)
+    config_with_tools = GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
-        response_mime_type="application/json",
-        response_schema=RESPONSE_SCHEMA,
+        tools=[MATH_TOOLS],
         temperature=0.2,
     )
 
-    # First attempt
-    result = _call_gemini_raw(contents, config, model)
+    response = client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=config_with_tools,
+    )
 
-    # Sanitize the output
+    # Tool calling loop
+    for _ in range(MAX_TOOL_ITERATIONS):
+        # Check if response has a function call
+        candidate = response.candidates[0]
+        parts = candidate.content.parts
+
+        function_call = None
+        for part in parts:
+            if part.function_call:
+                function_call = part.function_call
+                break
+
+        if not function_call:
+            break  # No tool call — Gemini produced a final response
+
+        # Execute the tool
+        tool_name = function_call.name
+        tool_args = dict(function_call.args) if function_call.args else {}
+        print(f"Tool call: {tool_name}({tool_args})")
+
+        tool_result = _execute_tool(tool_name, tool_args)
+        print(f"Tool result: {tool_result}")
+
+        # Send tool result back to Gemini
+        contents.append(candidate.content)
+        contents.append(
+            genai.types.Content(
+                role="user",
+                parts=[genai.types.Part(
+                    function_response=genai.types.FunctionResponse(
+                        name=tool_name,
+                        response=tool_result,
+                    )
+                )],
+            )
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config_with_tools,
+        )
+
+    # Extract final text response
+    final_text = response.text or ""
+
+    # Try to parse as JSON
+    try:
+        result = json.loads(final_text)
+    except json.JSONDecodeError:
+        # Gemini returned plain text — try to extract JSON from it
+        json_match = re.search(r'\{[\s\S]*\}', final_text)
+        if json_match:
+            try:
+                result = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                result = {
+                    "action": "no_change",
+                    "new_document": document,
+                    "reply": final_text[:500],
+                }
+        else:
+            result = {
+                "action": "no_change",
+                "new_document": document,
+                "reply": final_text[:500] if final_text else "I processed your request but couldn't generate a structured response.",
+            }
+
+    # Sanitize LaTeX output
     if "new_document" in result:
         result["new_document"] = sanitize_latex(result["new_document"])
 
-        # Check if sanitized output still has issues
         bad = _has_bad_latex(result["new_document"])
         if bad:
-            # Retry once: ask Gemini to fix its own output
+            # Retry once with structured output only (no tools)
+            config_json = GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                response_schema=RESPONSE_SCHEMA,
+                temperature=0.2,
+            )
             fix_contents = [
                 genai.types.Content(
                     role="user",
                     parts=[genai.types.Part(text=(
-                        f"Your previous LaTeX output contains `{bad}` which is NOT supported by KaTeX. "
-                        f"Fix this document to use ONLY KaTeX-compatible LaTeX. "
-                        f"Use $$ for display math, never \\[...\\]. No \\vspace, \\hspace, or environments like align/equation.\n\n"
-                        f"Document to fix:\n```latex\n{result['new_document']}\n```"
+                        f"Fix this LaTeX to be KaTeX-compatible. Remove `{bad}` and use $$ for display math.\n\n"
+                        f"Document:\n```latex\n{result['new_document']}\n```"
                     ))],
                 )
             ]
             try:
-                fixed = _call_gemini_raw(fix_contents, config, model)
-                if "new_document" in fixed:
-                    fixed["new_document"] = sanitize_latex(fixed["new_document"])
-                    result["new_document"] = fixed["new_document"]
+                fixed = client.models.generate_content(
+                    model=model, contents=fix_contents, config=config_json
+                )
+                fixed_result = json.loads(fixed.text)
+                if "new_document" in fixed_result:
+                    fixed_result["new_document"] = sanitize_latex(fixed_result["new_document"])
+                    result["new_document"] = fixed_result["new_document"]
             except Exception:
-                pass  # Keep the sanitized first attempt
+                pass
 
     return result
