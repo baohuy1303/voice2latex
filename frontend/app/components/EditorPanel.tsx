@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { motion } from "framer-motion";
 import type { Monaco } from "@monaco-editor/react";
 
 const Editor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
@@ -365,20 +366,30 @@ export default function EditorPanel({
               readOnly: true,
             }}
           />
-          <div className="absolute top-3 right-3 flex gap-2" style={{ zIndex: 10 }}>
-            <button
+          <motion.div
+            initial={{ opacity: 0, y: -12, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ type: "spring", stiffness: 300, damping: 22, delay: 0.15 }}
+            className="absolute top-3 right-3 flex gap-2"
+            style={{ zIndex: 10 }}
+          >
+            <motion.button
               onClick={onAccept}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-colors"
             >
               Accept
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={onReject}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-500 text-white shadow-lg transition-colors"
             >
               Reject
-            </button>
-          </div>
+            </motion.button>
+          </motion.div>
         </>
       ) : (
         <Editor
