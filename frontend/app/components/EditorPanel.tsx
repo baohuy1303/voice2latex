@@ -29,6 +29,7 @@ interface EditorPanelProps {
   proposedValue?: string | null;
   onAccept?: () => void;
   onReject?: () => void;
+  fontSize?: number;
   className?: string;
 }
 
@@ -38,6 +39,7 @@ export default function EditorPanel({
   proposedValue,
   onAccept,
   onReject,
+  fontSize = 14,
   className = "",
 }: EditorPanelProps) {
   const isDiffMode = proposedValue != null;
@@ -55,14 +57,13 @@ export default function EditorPanel({
             options={{
               minimap: { enabled: false },
               wordWrap: "on",
-              fontSize: 14,
+              fontSize,
               renderSideBySide: false,
               scrollBeyondLastLine: false,
               readOnly: true,
               padding: { top: 12 },
             }}
           />
-          {/* Accept / Reject buttons */}
           <div className="absolute top-3 right-3 flex gap-2" style={{ zIndex: 10 }}>
             <button
               onClick={onAccept}
@@ -88,7 +89,7 @@ export default function EditorPanel({
           options={{
             minimap: { enabled: false },
             wordWrap: "on",
-            fontSize: 14,
+            fontSize,
             lineNumbers: "on",
             scrollBeyondLastLine: false,
             padding: { top: 12 },

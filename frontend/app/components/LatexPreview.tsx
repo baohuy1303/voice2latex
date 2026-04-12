@@ -6,6 +6,7 @@ import "katex/dist/katex.min.css";
 
 interface LatexPreviewProps {
   latex: string;
+  fontSize?: number;
   className?: string;
 }
 
@@ -58,7 +59,7 @@ function renderBlocks(input: string): string {
   return parts.join("");
 }
 
-export default function LatexPreview({ latex, className = "" }: LatexPreviewProps) {
+export default function LatexPreview({ latex, fontSize, className = "" }: LatexPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,7 +88,7 @@ export default function LatexPreview({ latex, className = "" }: LatexPreviewProp
 
   return (
     <div className={className}>
-      <div ref={containerRef} className="p-4 overflow-auto" />
+      <div ref={containerRef} className="p-4 overflow-auto" style={fontSize ? { fontSize: `${fontSize}px` } : undefined} />
       {error && (
         <div className="px-4 pb-2 text-sm text-red-400 font-mono">
           {error}

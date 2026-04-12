@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import PdfPanel from "./components/PdfPanel";
 import EditorPanel from "./components/EditorPanel";
 import LatexPreview from "./components/LatexPreview";
 import SiriBubble from "./components/SiriBubble";
+import ContextTray, { ContextSnippet } from "./components/ContextTray";
 import {
   sendChatMessage,
   transcribeAudio,
@@ -20,6 +21,8 @@ interface ChatMessage {
   content: string;
 }
 
+let snippetCounter = 0;
+
 export default function Home() {
   const [document, setDocument] = useState("");
   const [documentHistory, setDocumentHistory] = useState<string[]>([]);
@@ -28,10 +31,99 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Array<{ id: string; updated_at: string }>>([]);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [pdfContext, setPdfContext] = useState<string | null>(null);
+  const [contextSnippets, setContextSnippets] = useState<ContextSnippet[]>([]);
   const [pendingDocument, setPendingDocument] = useState<string | null>(null);
+  const [editorFontSize, setEditorFontSize] = useState(14);
+  const [previewFontSize, setPreviewFontSize] = useState(16);
   const { isRecording, startRecording, stopRecording } = useMicrophone();
 
+  // Panel widths as percentages
+  const [panelWidths, setPanelWidths] = useState([25, 40, 35]);
+  const isDraggingDivider = useRef<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // --- Draggable dividers ---
+  const handleDividerMouseDown = useCallback((dividerIndex: number) => {
+    isDraggingDivider.current = dividerIndex;
+    window.document.body.style.cursor = "col-resize";
+    window.document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingDivider.current === null || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      const idx = isDraggingDivider.current;
+
+      setPanelWidths((prev) => {
+        const next = [...prev];
+        if (idx === 0) {
+          // Dragging between panel 0 and 1
+          const newLeft = Math.max(10, Math.min(50, pct));
+          const diff = newLeft - next[0];
+          next[0] = newLeft;
+          next[1] = Math.max(15, next[1] - diff);
+        } else {
+          // Dragging between panel 1 and 2
+          const boundary = next[0] + next[1];
+          const newBoundary = Math.max(next[0] + 15, Math.min(90, pct));
+          next[1] = newBoundary - next[0];
+          next[2] = Math.max(10, 100 - newBoundary);
+        }
+        return next;
+      });
+    };
+
+    const handleMouseUp = () => {
+      if (isDraggingDivider.current !== null) {
+        isDraggingDivider.current = null;
+        window.document.body.style.cursor = "";
+        window.document.body.style.userSelect = "";
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  // --- Context snippets ---
+  const addContextSnippet = useCallback((source: "pdf" | "editor" | "preview", text: string) => {
+    const id = `ctx-${++snippetCounter}`;
+    setContextSnippets((prev) => [...prev, { id, source, text }]);
+  }, []);
+
+  const removeContextSnippet = useCallback((id: string) => {
+    setContextSnippets((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const clearAllContext = useCallback(() => {
+    setContextSnippets([]);
+  }, []);
+
+  // Build context string from all snippets
+  const getContextString = useCallback(() => {
+    if (contextSnippets.length === 0) return undefined;
+    return contextSnippets
+      .map((s) => `[From ${s.source}]: ${s.text}`)
+      .join("\n\n");
+  }, [contextSnippets]);
+
+  // --- Text selection handler for editor/preview ---
+  const handleTextSelection = useCallback((source: "editor" | "preview") => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim();
+    if (text && text.length > 2) {
+      addContextSnippet(source, text);
+      selection?.removeAllRanges();
+    }
+  }, [addContextSnippet]);
+
+  // --- Sessions ---
   const refreshSessions = useCallback(async () => {
     const list = await listSessions();
     setSessions(list);
@@ -53,9 +145,7 @@ export default function Home() {
           );
           await refreshSessions();
           return;
-        } catch {
-          // Session not found
-        }
+        } catch { /* create new */ }
       }
       const state = await createSession();
       setSessionId(state.id);
@@ -72,7 +162,7 @@ export default function Home() {
     setMessages([]);
     setDocumentHistory([]);
     setPdfFile(null);
-    setPdfContext(null);
+    setContextSnippets([]);
     setPendingDocument(null);
     localStorage.setItem("voice2latex_session", state.id);
     await refreshSessions();
@@ -91,19 +181,17 @@ export default function Home() {
       );
       setDocumentHistory([]);
       setPdfFile(null);
-      setPdfContext(null);
+      setContextSnippets([]);
       setPendingDocument(null);
       localStorage.setItem("voice2latex_session", state.id);
-    } catch {
-      // Session not found
-    }
+    } catch { /* not found */ }
   }, []);
 
   const handleClearSession = useCallback(() => {
     setDocument("");
     setMessages([]);
     setDocumentHistory([]);
-    setPdfContext(null);
+    setContextSnippets([]);
     setPendingDocument(null);
   }, []);
 
@@ -120,6 +208,7 @@ export default function Home() {
     });
   }, []);
 
+  // --- Chat ---
   const handleSend = useCallback(
     async (message: string) => {
       if (!message.trim() || isLoading) return;
@@ -132,7 +221,7 @@ export default function Home() {
           message,
           document,
           sessionId || undefined,
-          pdfContext || undefined
+          getContextString()
         );
 
         setMessages((prev) => [
@@ -144,7 +233,7 @@ export default function Home() {
           setPendingDocument(res.new_document);
         }
 
-        setPdfContext(null);
+        clearAllContext();
       } catch {
         setMessages((prev) => [
           ...prev,
@@ -154,7 +243,7 @@ export default function Home() {
         setIsLoading(false);
       }
     },
-    [document, sessionId, pdfContext, isLoading]
+    [document, sessionId, getContextString, isLoading, clearAllContext]
   );
 
   const handleAcceptDiff = useCallback(() => {
@@ -168,25 +257,19 @@ export default function Home() {
     setPendingDocument(null);
   }, []);
 
+  // --- Voice ---
   const handleMicToggle = useCallback(async () => {
     if (isRecording) {
       const blob = await stopRecording();
       if (!blob || blob.size < 1000) return;
-
       setIsLoading(true);
       try {
         const transcript = await transcribeAudio(blob);
-        if (!transcript) {
-          setIsLoading(false);
-          return;
-        }
+        if (!transcript) { setIsLoading(false); return; }
         setIsLoading(false);
         await handleSend(transcript);
       } catch {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "Error: Could not process voice." },
-        ]);
+        setMessages((prev) => [...prev, { role: "assistant", content: "Error: Could not process voice." }]);
         setIsLoading(false);
       }
     } else {
@@ -197,9 +280,7 @@ export default function Home() {
   const handlePdfUpload = useCallback(
     async (file: File) => {
       setPdfFile(file);
-      if (sessionId) {
-        await uploadPdf(sessionId, file);
-      }
+      if (sessionId) await uploadPdf(sessionId, file);
     },
     [sessionId]
   );
@@ -222,82 +303,115 @@ export default function Home() {
             className="bg-zinc-800 text-zinc-400 text-xs rounded-md px-2 py-1.5 outline-none border border-zinc-700/50 cursor-pointer hover:border-zinc-600"
           >
             {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                Session {s.id}
-              </option>
+              <option key={s.id} value={s.id}>Session {s.id}</option>
             ))}
             <option value="__new__">+ New session</option>
           </select>
-          <button
-            onClick={handleClearSession}
-            className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 transition-colors border border-zinc-700/50"
-          >
+          <button onClick={handleClearSession} className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 transition-colors border border-zinc-700/50">
             Clear
           </button>
-          <button
-            onClick={handleUndo}
-            disabled={documentHistory.length === 0}
-            className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 transition-colors border border-zinc-700/50"
-          >
+          <button onClick={handleUndo} disabled={documentHistory.length === 0} className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 transition-colors border border-zinc-700/50">
             Undo
           </button>
         </div>
       </header>
 
-      {/* 3-Panel Layout */}
-      <div className="flex flex-1 overflow-hidden relative" style={{ zIndex: 1 }}>
+      {/* 3-Panel Layout with draggable dividers */}
+      <div ref={containerRef} className="flex flex-1 overflow-hidden relative" style={{ zIndex: 1 }}>
         {/* Left: PDF Viewer */}
-        <div className="w-[25%] min-w-[200px] border-r border-zinc-800/80 flex flex-col bg-zinc-900/30">
-          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between">
+        <div className="flex flex-col bg-zinc-900/30 overflow-hidden" style={{ width: `${panelWidths[0]}%` }}>
+          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between shrink-0">
             <span>PDF Viewer</span>
             {pdfFile && (
-              <span className="text-[10px] text-zinc-600 truncate max-w-[120px]">
-                {pdfFile.name}
-              </span>
+              <span className="text-[10px] text-zinc-600 truncate max-w-[100px]">{pdfFile.name}</span>
             )}
           </div>
           <PdfPanel
             file={pdfFile}
             onFileUpload={handlePdfUpload}
-            onTextSelected={(text) => setPdfContext(text)}
+            onTextSelected={(text) => addContextSnippet("pdf", text)}
             className="flex-1"
           />
         </div>
 
-        {/* Middle: Monaco Editor (with diff mode) */}
-        <div className="w-[40%] border-r border-zinc-800/80 flex flex-col">
-          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between">
-            <span>{pendingDocument ? "Review Changes" : "Editor"}</span>
-            {pendingDocument && (
-              <span className="text-[10px] text-amber-400 font-medium">
-                Pending changes
-              </span>
-            )}
+        {/* Divider 1 */}
+        <div
+          className="w-1 bg-zinc-800/80 hover:bg-indigo-500/50 cursor-col-resize shrink-0 transition-colors"
+          onMouseDown={() => handleDividerMouseDown(0)}
+        />
+
+        {/* Middle: Monaco Editor */}
+        <div className="flex flex-col overflow-hidden" style={{ width: `${panelWidths[1]}%` }}>
+          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <span>{pendingDocument ? "Review Changes" : "Editor"}</span>
+              {pendingDocument && (
+                <span className="text-[10px] text-amber-400 font-medium normal-case tracking-normal">Pending</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleTextSelection("editor")}
+                className="text-[9px] text-zinc-500 hover:text-indigo-400 px-1.5 py-0.5 rounded hover:bg-zinc-800 mr-1"
+                title="Send selected text to AI"
+              >
+                Send
+              </button>
+              <button onClick={() => setEditorFontSize((s) => Math.max(10, s - 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">-</button>
+              <span className="text-[9px] text-zinc-600 w-5 text-center">{editorFontSize}</span>
+              <button onClick={() => setEditorFontSize((s) => Math.min(28, s + 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">+</button>
+            </div>
           </div>
           <EditorPanel
             value={document}
-            onChange={(val) => {
-              pushHistory(document);
-              setDocument(val);
-            }}
+            onChange={(val) => { pushHistory(document); setDocument(val); }}
             proposedValue={pendingDocument}
             onAccept={handleAcceptDiff}
             onReject={handleRejectDiff}
+            fontSize={editorFontSize}
             className="flex-1"
           />
         </div>
 
+        {/* Divider 2 */}
+        <div
+          className="w-1 bg-zinc-800/80 hover:bg-indigo-500/50 cursor-col-resize shrink-0 transition-colors"
+          onMouseDown={() => handleDividerMouseDown(1)}
+        />
+
         {/* Right: KaTeX Preview */}
-        <div className="w-[35%] flex flex-col">
-          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50">
-            Preview
+        <div className="flex flex-col overflow-hidden" style={{ width: `${panelWidths[2]}%` }}>
+          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between shrink-0">
+            <span>Preview</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleTextSelection("preview")}
+                className="text-[9px] text-zinc-500 hover:text-indigo-400 px-1.5 py-0.5 rounded hover:bg-zinc-800 mr-1"
+                title="Send selected text to AI"
+              >
+                Send
+              </button>
+              <button onClick={() => setPreviewFontSize((s) => Math.max(10, s - 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">-</button>
+              <span className="text-[9px] text-zinc-600 w-5 text-center">{previewFontSize}</span>
+              <button onClick={() => setPreviewFontSize((s) => Math.min(32, s + 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">+</button>
+            </div>
           </div>
-          <LatexPreview
-            latex={pendingDocument || document}
-            className="flex-1 bg-zinc-900/40 overflow-auto latex-preview"
-          />
+          <div onMouseUp={() => handleTextSelection("preview")} className="flex-1 overflow-hidden flex flex-col">
+            <LatexPreview
+              latex={pendingDocument || document}
+              fontSize={previewFontSize}
+              className="flex-1 bg-zinc-900/40 overflow-auto latex-preview"
+            />
+          </div>
         </div>
       </div>
+
+      {/* Context Tray */}
+      <ContextTray
+        snippets={contextSnippets}
+        onRemove={removeContextSnippet}
+        onClearAll={clearAllContext}
+      />
 
       {/* Floating Siri Bubble */}
       <SiriBubble
@@ -306,8 +420,8 @@ export default function Home() {
         isRecording={isRecording}
         onMicToggle={handleMicToggle}
         onSend={handleSend}
-        pdfContext={pdfContext}
-        onClearContext={() => setPdfContext(null)}
+        pdfContext={contextSnippets.length > 0 ? `${contextSnippets.length} context(s) attached` : null}
+        onClearContext={clearAllContext}
       />
     </div>
   );
