@@ -166,7 +166,7 @@ export default function Home() {
 
   useEffect(() => {
     async function init() {
-      const savedId = localStorage.getItem("voice2latex_session");
+      const savedId = localStorage.getItem("stemflow_session");
       if (savedId) {
         try {
           const state = await getSession(savedId);
@@ -186,7 +186,7 @@ export default function Home() {
       }
       const state = await createSession();
       setSessionId(state.id);
-      localStorage.setItem("voice2latex_session", state.id);
+      localStorage.setItem("stemflow_session", state.id);
       await refreshSessions();
     }
     init();
@@ -201,7 +201,7 @@ export default function Home() {
     setPdfFile(null);
     setContextSnippets([]);
     setPendingDocument(null);
-    localStorage.setItem("voice2latex_session", state.id);
+    localStorage.setItem("stemflow_session", state.id);
     await refreshSessions();
   }, [refreshSessions]);
 
@@ -221,7 +221,7 @@ export default function Home() {
       setPendingDocument(null);
       const pdf = await fetchSessionPdf(state.id);
       setPdfFile(pdf);
-      localStorage.setItem("voice2latex_session", state.id);
+      localStorage.setItem("stemflow_session", state.id);
     } catch { /* not found */ }
   }, []);
 
@@ -241,7 +241,7 @@ export default function Home() {
       if (sessionId === id) {
         handleClearSession();
         setSessionId(null);
-        localStorage.removeItem("voice2latex_session");
+        localStorage.removeItem("stemflow_session");
       }
       await refreshSessions();
     } catch { /* error */ }
@@ -382,9 +382,8 @@ export default function Home() {
             </svg>
           </div>
           <h1 className="text-sm font-bold tracking-tight">
-            <span className="text-zinc-100">Voice</span>
-            <span className="text-indigo-400">2</span>
-            <span className="text-zinc-100">LaTeX</span>
+            <span className="text-zinc-100">Stem</span>
+            <span className="text-indigo-400">Flow</span>
           </h1>
         </div>
 
