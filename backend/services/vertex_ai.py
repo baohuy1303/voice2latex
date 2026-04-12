@@ -225,6 +225,65 @@ def call_gemini(
         if image_parts:
             contents.append(genai.types.Content(role="user", parts=image_parts))
 
+    # --- TUTOR MODE: pure conversation, no editing ---
+    if mode == "tutor":
+        tutor_prompt = f"""The student's current LaTeX document for reference (DO NOT modify it):
+```latex
+{document}
+```
+
+Student's question: {user_message}"""
+
+        contents.append(
+            genai.types.Content(
+                role="user",
+                parts=[genai.types.Part(text=tutor_prompt)],
+            )
+        )
+
+        tutor_instruction = (
+            "You are a math tutor. The student is working on a LaTeX document. "
+            "You can see their document, any uploaded images, and any highlighted PDF text they shared.\n\n"
+            "RULES:\n"
+            "- Help the student understand concepts, guide them step by step.\n"
+            "- Do NOT give direct answers to homework. Use Socratic questioning.\n"
+            "- Point out mistakes and explain WHY they're wrong.\n"
+            "- You can reference specific equations in their document.\n"
+            "- Use $...$ for inline math and $$...$$ for display math in your explanations.\n"
+            "- Keep responses concise and focused.\n"
+            "- Respond with JSON: {\"action\": \"no_change\", \"new_document\": \"<same document unchanged>\", \"reply\": \"<your teaching response>\"}"
+        )
+
+        config = GenerateContentConfig(
+            system_instruction=tutor_instruction,
+            temperature=0.4,
+        )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+
+        final_text = response.text or ""
+        try:
+            result = json.loads(final_text)
+        except json.JSONDecodeError:
+            json_match = re.search(r'\{[\s\S]*\}', final_text)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    result = {"action": "no_change", "new_document": document, "reply": final_text[:500]}
+            else:
+                result = {"action": "no_change", "new_document": document, "reply": final_text[:500] or "I'm here to help!"}
+
+        # Force no document changes in tutor mode
+        result["action"] = "no_change"
+        result["new_document"] = document
+        return result
+
+    # --- EDIT MODE: full pipeline with tools ---
     user_prompt = f"""Current document:
 ```latex
 {document}
@@ -242,20 +301,10 @@ If the user asks to solve, simplify, differentiate, or integrate, use the approp
         )
     )
 
-    sys_instruction = SYSTEM_PROMPT
-    if mode == "tutor":
-        sys_instruction += "\n\n***TUTOR MODE INSTRUCTIONS***\n" \
-                           "You are in TUTOR MODE. You MUST NEVER overwrite the user's document.\n" \
-                           "Do NOT provide direct answers to homework or let them cheat. Act as a Socratic tutor guiding the student.\n" \
-                           "Focus strictly on pedagogy and explanations.\n" \
-                           "Always respond with JSON: {\"action\": \"no_change\", \"new_document\": <same doc as input>, \"reply\": <your lesson>}"
-
-    active_tools = [MATH_TOOLS] if mode != "tutor" else []
-
     # First try: with tools (no response_schema, since tools + schema can conflict)
     config_with_tools = GenerateContentConfig(
-        system_instruction=sys_instruction,
-        tools=active_tools,
+        system_instruction=SYSTEM_PROMPT,
+        tools=[MATH_TOOLS],
         temperature=0.2,
     )
 
@@ -341,7 +390,7 @@ If the user asks to solve, simplify, differentiate, or integrate, use the approp
         if bad:
             # Retry once with structured output only (no tools)
             config_json = GenerateContentConfig(
-                system_instruction=sys_instruction,
+                system_instruction=SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 response_schema=RESPONSE_SCHEMA,
                 temperature=0.2,

@@ -282,30 +282,35 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-700/50">
-            <button
-              onClick={() => setMode("edit")}
-              className={`px-3 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                mode === "edit" ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              ✏️ Edit
-            </button>
-            <button
-              onClick={() => setMode("tutor")}
-              className={`px-3 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                mode === "tutor" ? "bg-emerald-600 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              🎓 Tutor
-            </button>
-          </div>
-          <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
-            Voice2LaTeX
-          </h1>
+      <header className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur-sm shrink-0">
+        <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
+          Voice2LaTeX
+        </h1>
+
+        {/* Mode toggle — centered */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex bg-zinc-800/80 rounded-xl p-1 border border-zinc-700/40">
+          <button
+            onClick={() => setMode("edit")}
+            className={`px-5 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+              mode === "edit"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/30"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => setMode("tutor")}
+            className={`px-5 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+              mode === "tutor"
+                ? "bg-emerald-600 text-white shadow-md shadow-emerald-900/30"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            Tutor
+          </button>
         </div>
+
         <div className="flex items-center gap-2">
           <select
             value={sessionId || ""}

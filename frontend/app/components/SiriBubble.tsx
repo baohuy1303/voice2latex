@@ -134,16 +134,18 @@ export default function SiriBubble({
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed ${
+                  className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed max-h-[60px] overflow-hidden ${
                     msg.role === "user"
                       ? "bg-blue-600/20 text-blue-200 rounded-br-sm backdrop-blur-sm"
                       : "bg-zinc-800/20 text-zinc-300 rounded-bl-sm backdrop-blur-sm"
                   }`}
                   dangerouslySetInnerHTML={
-                    msg.role === "assistant" ? { __html: renderInlineKatex(msg.content) } : undefined
+                    msg.role === "assistant"
+                      ? { __html: renderInlineKatex(msg.content.length > 150 ? msg.content.slice(0, 150) + "..." : msg.content) }
+                      : undefined
                   }
                 >
-                  {msg.role === "user" ? msg.content : undefined}
+                  {msg.role === "user" ? (msg.content.length > 100 ? msg.content.slice(0, 100) + "..." : msg.content) : undefined}
                 </div>
               </motion.div>
             ))}
