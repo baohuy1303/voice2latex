@@ -1,6 +1,6 @@
 # Agentic AI Capabilities
 
-This document outlines the specific "Agentic" capabilities and tools powered by Google Gemini and the related verification/tool-execution pipeline in the Voice2LaTeX backend.
+This document outlines the specific "Agentic" capabilities and tools powered by Google Gemini and the related verification/tool-execution pipeline in the StemFlow backend.
 
 ## 1. Symbolic Math Engine (via SymPy)
 

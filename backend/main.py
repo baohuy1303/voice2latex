@@ -6,7 +6,7 @@ from routers import chat, chat_stream, voice, session, compile
 
 load_dotenv()
 
-app = FastAPI(title="Voice2LaTeX API")
+app = FastAPI(title="StemFlow API")
 
 app.add_middleware(
     CORSMiddleware,

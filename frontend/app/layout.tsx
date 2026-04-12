@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Voice2LaTeX",
+  title: "StemFlow",
   description: "AI-powered voice and chat LaTeX editor",
 };
 

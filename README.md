@@ -1,6 +1,6 @@
-# Voice2LaTeX
+# StemFlow
 
-Voice2LaTeX is an AI-assisted math workspace for creating, editing, and refining LaTeX through both chat and voice. Instead of treating AI as a one-off prompt box, the product is built around a live working document: users write or paste raw LaTeX, preview the rendered output immediately, and use AI to propose edits in context.
+StemFlow is an AI-assisted math workspace for creating, editing, and refining LaTeX through both chat and voice. Instead of treating AI as a one-off prompt box, the product is built around a live working document: users write or paste raw LaTeX, preview the rendered output immediately, and use AI to propose edits in context.
 
 The workspace is designed for fast local demos and practical math workflows. Users can reference PDFs while working, send text or voice instructions to the assistant, review pending document changes before applying them, undo edits, and compile the current document into a downloadable PDF. The result is a focused environment for iterative math authoring rather than a generic chatbot experience.
 
@@ -8,7 +8,7 @@ This repository is intended to be easy to run locally for demos, team handoff, a
 
 ## What It Does
 
-Voice2LaTeX allows users to:
+StemFlow allows users to:
 
 - Edit a raw LaTeX document directly
 - Preview rendered math live
@@ -80,7 +80,7 @@ The backend is built with FastAPI and handles chat requests, streaming responses
 ## Project Structure
 
 ```text
-voice2latex/
+stemflow/
 ├─ frontend/                     # Next.js frontend
 ├─ backend/                      # FastAPI backend
 ├─ idea-overview.md              # product vision
@@ -105,7 +105,7 @@ You will also need working Google Cloud configuration for AI and voice features.
 Open a terminal in the backend directory:
 
 ```cmd
-cd /d "C:\path\to\voice2latex\backend"
+cd /d "C:\path\to\stemflow\backend"
 ```
 
 Create a virtual environment:
@@ -178,7 +178,7 @@ http://127.0.0.1:8000/ping
 Open a second terminal in the frontend directory:
 
 ```cmd
-cd /d "C:\path\to\voice2latex\frontend"
+cd /d "C:\path\to\stemflow\frontend"
 ```
 
 Install dependencies:
@@ -213,7 +213,7 @@ To run the project correctly, keep both backend and frontend running at the same
 ### Terminal 1: Backend
 
 ```cmd
-cd /d "C:\path\to\voice2latex\backend"
+cd /d "C:\path\to\stemflow\backend"
 .venv\Scripts\activate.bat
 python -m uvicorn main:app --reload --port 8000
 ```
@@ -221,7 +221,7 @@ python -m uvicorn main:app --reload --port 8000
 ### Terminal 2: Frontend
 
 ```cmd
-cd /d "C:\path\to\voice2latex\frontend"
+cd /d "C:\path\to\stemflow\frontend"
 npm install
 npm run dev
 ```
@@ -337,13 +337,13 @@ A warning about multiple `package-lock.json` files is usually a configuration wa
 
 ## Product Philosophy
 
-Voice2LaTeX is optimized for fast local demos and practical math workflows. It prioritizes document editing, visible state changes, and useful AI assistance over heavyweight architecture or broad feature sprawl.
+StemFlow is optimized for fast local demos and practical math workflows. It prioritizes document editing, visible state changes, and useful AI assistance over heavyweight architecture or broad feature sprawl.
 
 It is not intended to be a full theorem prover, a full computer algebra system, or a production-grade collaborative editor. Its strength is providing a clear, interactive math authoring workflow that is easy to demonstrate and easy to understand.
 
 ## Why It Works Well for Demos
 
-Voice2LaTeX works well in hackathon and showcase settings because it combines:
+StemFlow works well in hackathon and showcase settings because it combines:
 
 - AI-assisted LaTeX editing
 - Voice interaction
