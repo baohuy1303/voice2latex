@@ -157,7 +157,7 @@ export async function streamChat(
 // --- Compile to PDF ---
 
 export async function compileToPdf(source: string): Promise<Blob> {
-  const res = await fetch(`${API_BASE}/compile`, {
+  const res = await fetch(`/api/compile`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ source }),

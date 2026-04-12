@@ -51,7 +51,7 @@ export default function Home() {
   const [mode, setMode] = useState<"edit" | "tutor">("edit");
   const [isCompiling, setIsCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
-  const [compiledPdfUrl, setCompiledPdfUrl] = useState<string | null>(null);
+  const [compiledPdfFile, setCompiledPdfFile] = useState<File | null>(null);
   const [previewTab, setPreviewTab] = useState<"katex" | "pdf">("katex");
 
   const activeDocument = pendingDocument || document;
@@ -188,6 +188,8 @@ export default function Home() {
     setPendingDocument(null);
     setGraph(null);
     setGraphError(null);
+    setCompiledPdfFile(null);
+    setPreviewTab("katex");
     localStorage.setItem("voice2latex_session", state.id);
     await refreshSessions();
   }, [refreshSessions]);
@@ -209,6 +211,8 @@ export default function Home() {
       setPendingDocument(null);
       setGraph(null);
       setGraphError(null);
+      setCompiledPdfFile(null);
+      setPreviewTab("katex");
       localStorage.setItem("voice2latex_session", state.id);
     } catch {
       // not found
@@ -223,6 +227,8 @@ export default function Home() {
     setPendingDocument(null);
     setGraph(null);
     setGraphError(null);
+    setCompiledPdfFile(null);
+    setPreviewTab("katex");
   }, []);
 
   const handleDeleteSession = useCallback(
@@ -365,32 +371,23 @@ export default function Home() {
     }
   }, [isRecording, stopRecording, startRecording, handleSend]);
 
-  useEffect(() => {
-    return () => {
-      if (compiledPdfUrl) URL.revokeObjectURL(compiledPdfUrl);
-    };
-  }, [compiledPdfUrl]);
-
   const handleCompile = useCallback(async () => {
     setIsCompiling(true);
     setCompileError(null);
     try {
       const blob = await compileToPdf(document);
 
-      setCompiledPdfUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-
-      const url = URL.createObjectURL(blob);
-      setCompiledPdfUrl(url);
+      setCompiledPdfFile(new File([blob], "compiled.pdf", { type: "application/pdf" }));
       setPreviewTab("pdf");
 
+      const url = URL.createObjectURL(blob);
       const a = window.document.createElement("a");
       a.href = url;
       a.download = "document.pdf";
       a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
+      console.error("Compile error:", err);
       setCompileError(err instanceof Error ? err.message : "Compile failed");
     } finally {
       setIsCompiling(false);
@@ -560,16 +557,14 @@ export default function Home() {
               >
                 Preview
               </button>
-              {compiledPdfUrl && (
-                <button
-                  onClick={() => setPreviewTab("pdf")}
-                  className={`px-2 py-0.5 rounded font-medium uppercase tracking-wider transition-colors ${
-                    previewTab === "pdf" ? "text-zinc-200 bg-zinc-700/60" : "text-zinc-500 hover:text-zinc-300"
-                  }`}
-                >
-                  PDF
-                </button>
-              )}
+              <button
+                onClick={() => setPreviewTab("pdf")}
+                className={`px-2 py-0.5 rounded font-medium uppercase tracking-wider transition-colors ${
+                  previewTab === "pdf" ? "text-zinc-200 bg-zinc-700/60" : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                PDF
+              </button>
             </div>
             <div className="flex items-center gap-2">
               {previewTab === "katex" && (
@@ -596,8 +591,17 @@ export default function Home() {
               />
               <SelectionPopup containerRef={previewPanelRef} source="preview" onSendToAI={addContextSnippet} />
             </>
+          ) : compiledPdfFile ? (
+            <PdfPanel
+              file={compiledPdfFile}
+              onFileUpload={() => {}}
+              className="flex-1 min-h-0 overflow-hidden"
+            />
           ) : (
-            <iframe src={compiledPdfUrl!} className="flex-1 w-full border-0" title="Compiled PDF" />
+            <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 text-xs gap-2">
+              <span>No PDF compiled yet</span>
+              <span className="text-zinc-700">Click &quot;Compile &amp; Download&quot; to generate</span>
+            </div>
           )}
           <GraphCard
             graph={graph}
