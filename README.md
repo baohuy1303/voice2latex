@@ -351,3 +351,8 @@ Voice2LaTeX works well in hackathon and showcase settings because it combines:
 - A clear end-to-end local workflow
 
 That combination gives the project both technical depth and a strong, easy-to-follow user story for judges, teammates, and recruiters.
+
+## Contributors
+
+- Huy
+- Amen Bush
