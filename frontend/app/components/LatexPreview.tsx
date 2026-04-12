@@ -9,41 +9,48 @@ interface LatexPreviewProps {
   className?: string;
 }
 
+function renderInlineMath(text: string): string {
+  // Render $...$ inline math within a text line, keeping everything inline
+  return text.replace(/\$([^$]+)\$/g, (_match, expr) => {
+    try {
+      return katex.renderToString(expr, {
+        displayMode: false,
+        throwOnError: false,
+        trust: true,
+      });
+    } catch {
+      return `$${expr}$`;
+    }
+  });
+}
+
 function renderBlocks(input: string): string {
   const parts: string[] = [];
-  // Split on $$ delimiters to find display math blocks and text between them
   const segments = input.split(/\$\$/);
 
   for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i].trim();
-    if (!segment) continue;
-
+    const segment = segments[i];
     if (i % 2 === 1) {
       // Inside $$ ... $$ — render as display math
-      parts.push(
-        katex.renderToString(segment, {
-          displayMode: true,
-          throwOnError: false,
-          trust: true,
-        })
-      );
+      const trimmed = segment.trim();
+      if (trimmed) {
+        parts.push(
+          katex.renderToString(trimmed, {
+            displayMode: true,
+            throwOnError: false,
+            trust: true,
+          })
+        );
+      }
     } else {
-      // Outside $$ — render inline math ($...$) and plain text
-      const inlineParts = segment.split(/\$([^$]+)\$/g);
-      for (let j = 0; j < inlineParts.length; j++) {
-        const part = inlineParts[j].trim();
-        if (!part) continue;
-        if (j % 2 === 1) {
-          parts.push(
-            katex.renderToString(part, {
-              displayMode: false,
-              throwOnError: false,
-              trust: true,
-            })
-          );
-        } else {
-          parts.push(`<p class="my-1 text-zinc-300">${part}</p>`);
-        }
+      // Outside $$ — process line by line, keeping inline math on the same line as text
+      const lines = segment.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        // Render the whole line as one <p>, with inline $...$ converted to KaTeX spans
+        const rendered = renderInlineMath(trimmed);
+        parts.push(`<p class="my-1.5 text-zinc-300 leading-relaxed">${rendered}</p>`);
       }
     }
   }

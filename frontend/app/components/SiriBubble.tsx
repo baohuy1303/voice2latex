@@ -87,16 +87,16 @@ export default function SiriBubble({
           className="fixed left-1/2 -translate-x-1/2 w-[360px] flex flex-col gap-1.5 pointer-events-none"
           style={{ zIndex: 9998, bottom: isExpanded ? "auto" : "90px" , display: isExpanded ? "none" : "flex" }}
         >
-          {messages.slice(-4).map((msg, i) => (
+          {messages.slice(-2).map((msg, i) => (
             <div
               key={i}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} pointer-events-auto`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed shadow-lg ${
+                className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed ${
                   msg.role === "user"
-                    ? "bg-blue-600/80 text-white rounded-br-sm backdrop-blur-md"
-                    : "bg-zinc-800/90 text-zinc-200 rounded-bl-sm border border-zinc-700/30 backdrop-blur-md"
+                    ? "bg-blue-600/20 text-blue-200 rounded-br-sm backdrop-blur-sm"
+                    : "bg-zinc-800/20 text-zinc-300 rounded-bl-sm backdrop-blur-sm"
                 }`}
                 dangerouslySetInnerHTML={
                   msg.role === "assistant"
@@ -110,7 +110,7 @@ export default function SiriBubble({
           ))}
           {isLoading && (
             <div className="flex justify-start pointer-events-auto">
-              <div className="bg-zinc-800/90 backdrop-blur-md rounded-2xl rounded-bl-sm px-3 py-1.5 text-xs text-zinc-400 flex gap-1 border border-zinc-700/30 shadow-lg">
+              <div className="bg-zinc-800/20 backdrop-blur-sm rounded-2xl rounded-bl-sm px-3 py-1.5 text-xs text-zinc-400 flex gap-1">
                 <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />

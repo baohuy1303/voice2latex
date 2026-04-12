@@ -345,6 +345,54 @@ If the user asks to solve, simplify, differentiate, or integrate, use the approp
     return result
 
 
+def call_gemini_stream(
+    user_message: str,
+    document: str,
+    history: list[dict] | None = None,
+    context: str | None = None,
+):
+    """Streaming version of call_gemini. Yields dicts for SSE events.
+
+    Strategy:
+    1. First pass: non-streaming call with tools to handle any tool calls
+    2. Once we have the final text, stream the reply portion
+    3. Send the document update at the end
+
+    We can't truly stream tool-calling turns, so we do tool calls synchronously
+    then yield the final result in chunks.
+    """
+    # Use the non-streaming call_gemini for the actual work (handles tools)
+    user_msg = user_message
+    if context:
+        user_msg = f"Reference material (from uploaded PDF):\n\"\"\"\n{context}\n\"\"\"\n\nUser command: {user_message}"
+
+    result = call_gemini(user_msg, document, history)
+
+    # Stream the reply text in chunks
+    reply = result.get("reply", "")
+    words = reply.split(" ")
+    chunk = ""
+    for i, word in enumerate(words):
+        chunk += (" " if chunk else "") + word
+        if len(chunk) >= 15 or i == len(words) - 1:
+            yield {"type": "reply", "chunk": chunk}
+            chunk = ""
+
+    # Send explanation if present
+    explanation = result.get("explanation")
+    if explanation:
+        yield {"type": "explanation", "text": explanation}
+
+    # Send the document update
+    yield {
+        "type": "document",
+        "action": result.get("action", "no_change"),
+        "new_document": result.get("new_document", document),
+    }
+
+    yield {"type": "done"}
+
+
 def call_gemini_with_audio(
     audio_bytes: bytes,
     document: str,
