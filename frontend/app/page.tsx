@@ -5,6 +5,13 @@ import PdfPanel from "./components/PdfPanel";
 import EditorPanel from "./components/EditorPanel";
 import LatexPreview from "./components/LatexPreview";
 import SiriBubble from "./components/SiriBubble";
+import GraphCard from "./components/GraphCard";
+import {
+  buildGraphData,
+  extractGraphExpression,
+  getGraphCommandExpression,
+  GraphRenderData,
+} from "./lib/graphing";
 import {
   transcribeAudio,
   createSession,
@@ -29,6 +36,8 @@ export default function Home() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfContext, setPdfContext] = useState<string | null>(null);
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+  const [graph, setGraph] = useState<GraphRenderData | null>(null);
+  const [graphError, setGraphError] = useState<string | null>(null);
   const { isRecording, startRecording, stopRecording } = useMicrophone();
   const {
     isStreaming,
@@ -39,6 +48,8 @@ export default function Home() {
   } = useStreamingChat();
 
   const isLoading = isStreaming || isVoiceProcessing;
+  const activeDocument =
+    pendingDocument?.action !== "no_change" ? pendingDocument?.new_document || document : document;
 
   const refreshSessions = useCallback(async () => {
     const list = await listSessions();
@@ -138,12 +149,50 @@ export default function Home() {
     });
   }, []);
 
+  const graphExpression = useCallback((expression: string) => {
+    try {
+      const nextGraph = buildGraphData(expression);
+      setGraph(nextGraph);
+      setGraphError(null);
+      return { ok: true as const, message: `Graphing ${nextGraph.displayExpression}.` };
+    } catch (error) {
+      setGraph(null);
+      setGraphError(error instanceof Error ? error.message : "I couldn't graph that expression.");
+      return { ok: false as const, message: error instanceof Error ? error.message : "I couldn't graph that expression." };
+    }
+  }, []);
+
+  const handleGraphCurrent = useCallback(() => {
+    const expression = extractGraphExpression(activeDocument);
+    if (!expression) {
+      setGraph(null);
+      setGraphError("I couldn't find a simple y = f(x) expression in the current document.");
+      return;
+    }
+    graphExpression(expression);
+  }, [activeDocument, graphExpression]);
+
   // Streaming chat send
   const handleSend = useCallback(
     async (message: string) => {
       if (!message.trim() || isLoading) return;
 
       setMessages((prev) => [...prev, { role: "user", content: message }]);
+
+      const graphRequest = getGraphCommandExpression(message, activeDocument);
+      if (/^graph\b/i.test(message.trim())) {
+        if (!graphRequest) {
+          const reply = "I couldn't find a graphable function. Try `graph y = x^2` or use Graph Current.";
+          setGraph(null);
+          setGraphError("I couldn't find a simple y = f(x) expression in the current document.");
+          setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+          return;
+        }
+
+        const result = graphExpression(graphRequest);
+        setMessages((prev) => [...prev, { role: "assistant", content: result.message }]);
+        return;
+      }
 
       await streamSend(
         message,
@@ -154,7 +203,7 @@ export default function Home() {
 
       setPdfContext(null);
     },
-    [document, sessionId, pdfContext, isLoading, streamSend]
+    [activeDocument, document, sessionId, pdfContext, isLoading, streamSend, graphExpression]
   );
 
   // Accept diff — apply the proposed document
@@ -301,12 +350,28 @@ export default function Home() {
 
         {/* Right: KaTeX Preview */}
         <div className="w-[35%] flex flex-col">
-          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50">
-            Preview
+          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between">
+            <span>Preview</span>
+            <button
+              onClick={handleGraphCurrent}
+              className="rounded-md border border-zinc-700/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800/80"
+            >
+              Graph Current
+            </button>
           </div>
           <LatexPreview
-            latex={pendingDocument?.action !== "no_change" ? (pendingDocument?.new_document || document) : document}
-            className="flex-1 bg-zinc-900/40 overflow-auto latex-preview"
+            latex={activeDocument}
+            className="flex-1 min-h-0 bg-zinc-900/40 overflow-auto latex-preview"
+          />
+          <GraphCard
+            graph={graph}
+            error={graphError}
+            onGraphCurrent={handleGraphCurrent}
+            onGraphExpression={graphExpression}
+            onClear={() => {
+              setGraph(null);
+              setGraphError(null);
+            }}
           />
         </div>
       </div>
