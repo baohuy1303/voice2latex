@@ -37,6 +37,7 @@ export default function Home() {
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [previewFontSize, setPreviewFontSize] = useState(16);
   const { isRecording, startRecording, stopRecording } = useMicrophone();
+  const [mode, setMode] = useState<"edit" | "tutor">("edit");
 
   // Panel widths as percentages
   const [panelWidths, setPanelWidths] = useState([25, 40, 35]);
@@ -201,7 +202,7 @@ export default function Home() {
 
   // --- Chat ---
   const handleSend = useCallback(
-    async (message: string) => {
+    async (message: string, imagesBase64?: string[]) => {
       if (!message.trim() || isLoading) return;
 
       setMessages((prev) => [...prev, { role: "user", content: message }]);
@@ -212,7 +213,9 @@ export default function Home() {
           message,
           document,
           sessionId || undefined,
-          getContextString()
+          getContextString(),
+          mode,
+          imagesBase64
         );
 
         setMessages((prev) => [
@@ -234,7 +237,7 @@ export default function Home() {
         setIsLoading(false);
       }
     },
-    [document, sessionId, getContextString, isLoading, clearAllContext]
+    [document, sessionId, getContextString, isLoading, clearAllContext, mode]
   );
 
   const handleAcceptDiff = useCallback(() => {
@@ -280,9 +283,29 @@ export default function Home() {
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur-sm shrink-0">
-        <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
-          Voice2LaTeX
-        </h1>
+        <div className="flex items-center gap-4">
+          <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-700/50">
+            <button
+              onClick={() => setMode("edit")}
+              className={`px-3 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                mode === "edit" ? "bg-indigo-600 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              ✏️ Edit
+            </button>
+            <button
+              onClick={() => setMode("tutor")}
+              className={`px-3 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                mode === "tutor" ? "bg-emerald-600 text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              🎓 Tutor
+            </button>
+          </div>
+          <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
+            Voice2LaTeX
+          </h1>
+        </div>
         <div className="flex items-center gap-2">
           <select
             value={sessionId || ""}

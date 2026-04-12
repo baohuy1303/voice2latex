@@ -40,6 +40,8 @@ async def chat(request: ChatRequest):
                     user_message=user_message,
                     document=request.document,
                     history=history,
+                    mode=request.mode,
+                    images=request.images,
                 ),
             ),
             timeout=GEMINI_TIMEOUT,

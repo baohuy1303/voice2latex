@@ -12,7 +12,9 @@ interface UseStreamingChatReturn {
     message: string,
     document: string,
     sessionId?: string,
-    context?: string
+    context?: string,
+    mode?: "edit" | "tutor",
+    imagesBase64?: string[]
   ) => Promise<void>;
   clearPending: () => void;
 }
@@ -32,7 +34,9 @@ export default function useStreamingChat(): UseStreamingChatReturn {
       message: string,
       document: string,
       sessionId?: string,
-      context?: string
+      context?: string,
+      mode: "edit" | "tutor" = "edit",
+      imagesBase64?: string[]
     ) => {
       setIsStreaming(true);
       setStreamedReply("");
@@ -74,7 +78,9 @@ export default function useStreamingChat(): UseStreamingChatReturn {
             }
           },
           sessionId,
-          context
+          context,
+          mode,
+          imagesBase64
         );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Stream failed");

@@ -186,6 +186,8 @@ def call_gemini(
     user_message: str,
     document: str,
     history: list[dict] | None = None,
+    mode: str = "edit",
+    images: list[str] | None = None,
 ) -> dict:
     """Call Gemini with tool calling support and structured JSON output.
 
@@ -211,6 +213,18 @@ def call_gemini(
                 )
             )
 
+    if images:
+        import base64
+        image_parts = []
+        for img_b64 in images:
+            try:
+                # We assume image/jpeg for broad base64 blob support
+                image_parts.append(genai.types.Part.from_bytes(data=base64.b64decode(img_b64), mime_type="image/jpeg"))
+            except Exception:
+                pass
+        if image_parts:
+            contents.append(genai.types.Content(role="user", parts=image_parts))
+
     user_prompt = f"""Current document:
 ```latex
 {document}
@@ -228,10 +242,20 @@ If the user asks to solve, simplify, differentiate, or integrate, use the approp
         )
     )
 
+    sys_instruction = SYSTEM_PROMPT
+    if mode == "tutor":
+        sys_instruction += "\n\n***TUTOR MODE INSTRUCTIONS***\n" \
+                           "You are in TUTOR MODE. You MUST NEVER overwrite the user's document.\n" \
+                           "Do NOT provide direct answers to homework or let them cheat. Act as a Socratic tutor guiding the student.\n" \
+                           "Focus strictly on pedagogy and explanations.\n" \
+                           "Always respond with JSON: {\"action\": \"no_change\", \"new_document\": <same doc as input>, \"reply\": <your lesson>}"
+
+    active_tools = [MATH_TOOLS] if mode != "tutor" else []
+
     # First try: with tools (no response_schema, since tools + schema can conflict)
     config_with_tools = GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
-        tools=[MATH_TOOLS],
+        system_instruction=sys_instruction,
+        tools=active_tools,
         temperature=0.2,
     )
 
@@ -317,7 +341,7 @@ If the user asks to solve, simplify, differentiate, or integrate, use the approp
         if bad:
             # Retry once with structured output only (no tools)
             config_json = GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=sys_instruction,
                 response_mime_type="application/json",
                 response_schema=RESPONSE_SCHEMA,
                 temperature=0.2,
@@ -350,6 +374,8 @@ def call_gemini_stream(
     document: str,
     history: list[dict] | None = None,
     context: str | None = None,
+    mode: str = "edit",
+    images: list[str] | None = None,
 ):
     """True streaming: streams raw Gemini text chunks, then parses JSON at the end.
 
@@ -374,6 +400,17 @@ def call_gemini_stream(
                 )
             )
 
+    if images:
+        import base64
+        image_parts = []
+        for img_b64 in images:
+            try:
+                image_parts.append(genai.types.Part.from_bytes(data=base64.b64decode(img_b64), mime_type="image/jpeg"))
+            except Exception:
+                pass
+        if image_parts:
+            contents.append(genai.types.Content(role="user", parts=image_parts))
+
     user_msg = user_message
     if context:
         user_msg = f"Reference material (from uploaded PDF):\n\"\"\"\n{context}\n\"\"\"\n\nUser command: {user_message}"
@@ -394,8 +431,16 @@ Respond with JSON: {{"action": "replace_all"|"no_change", "new_document": "<full
         )
     )
 
+    sys_instruction = SYSTEM_PROMPT
+    if mode == "tutor":
+        sys_instruction += "\n\n***TUTOR MODE INSTRUCTIONS***\n" \
+                           "You are in TUTOR MODE. You MUST NEVER overwrite the user's document.\n" \
+                           "Do NOT provide direct answers to homework or let them cheat. Act as a Socratic tutor guiding the student.\n" \
+                           "Focus strictly on pedagogy and explanations.\n" \
+                           "Always respond with JSON: {\"action\": \"no_change\", \"new_document\": <same doc as input>, \"reply\": <your lesson>}"
+
     config = GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
+        system_instruction=sys_instruction,
         temperature=0.2,
     )
 

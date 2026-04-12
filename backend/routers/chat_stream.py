@@ -29,6 +29,8 @@ async def chat_stream(request: ChatRequest):
                 document=request.document,
                 history=history,
                 context=request.context,
+                mode=request.mode,
+                images=request.images,
             ):
                 event_type = event.get("type", "")
 

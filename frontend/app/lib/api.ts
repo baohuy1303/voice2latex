@@ -66,12 +66,14 @@ export async function sendChatMessage(
   message: string,
   document: string,
   sessionId?: string,
-  context?: string
+  context?: string,
+  mode: "edit" | "tutor" = "edit",
+  imagesBase64?: string[]
 ): Promise<AgentResponse> {
   const res = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, document, session_id: sessionId, context }),
+    body: JSON.stringify({ message, document, session_id: sessionId, context, mode, images: imagesBase64 }),
   });
 
   if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -94,12 +96,14 @@ export async function streamChat(
   document: string,
   onEvent: (event: StreamEvent) => void,
   sessionId?: string,
-  context?: string
+  context?: string,
+  mode: "edit" | "tutor" = "edit",
+  imagesBase64?: string[]
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, document, session_id: sessionId, context }),
+    body: JSON.stringify({ message, document, session_id: sessionId, context, mode, images: imagesBase64 }),
   });
 
   if (!res.ok) throw new Error(`Stream error: ${res.status}`);

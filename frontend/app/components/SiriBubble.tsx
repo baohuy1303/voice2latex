@@ -14,7 +14,7 @@ interface SiriBubbleProps {
   isLoading: boolean;
   isRecording: boolean;
   onMicToggle: () => void;
-  onSend: (message: string) => void;
+  onSend: (message: string, imagesBase64?: string[]) => void;
   pdfContext: string | null;
   onClearContext: () => void;
 }
@@ -45,6 +45,8 @@ export default function SiriBubble({
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedImages, setUploadedImages] = useState<Array<{name: string, base64: string}>>([]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,15 +56,39 @@ export default function SiriBubble({
     if (isExpanded) inputRef.current?.focus();
   }, [isExpanded]);
 
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result;
+        if (typeof result === "string") {
+          // Keep only the base64 part, split off "data:image/jpeg;base64,"
+          const base64 = result.split(",")[1];
+          if (base64) {
+            setUploadedImages(prev => [...prev, { name: file.name, base64 }]);
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
       const trimmed = input.trim();
-      if (!trimmed || isLoading) return;
-      onSend(trimmed);
+      if (!trimmed && uploadedImages.length === 0) return;
+      if (isLoading) return;
+      
+      const b64 = uploadedImages.map(img => img.base64);
+      onSend(trimmed || "See attached image.", b64);
       setInput("");
+      setUploadedImages([]);
     },
-    [input, isLoading, onSend]
+    [input, isLoading, onSend, uploadedImages]
   );
 
   const siriState = isRecording
@@ -209,8 +235,29 @@ export default function SiriBubble({
                 </div>
               )}
 
+              {uploadedImages.length > 0 && (
+                <div className="mx-3 mb-1 flex flex-wrap gap-1.5">
+                  {uploadedImages.map((img, idx) => (
+                    <div key={idx} className="flex items-center gap-1 px-2 py-0.5 bg-zinc-800 border border-zinc-700/50 rounded-md">
+                      <span className="text-[10px] text-zinc-400">🖼️ {img.name}</span>
+                      <button onClick={() => setUploadedImages(prev => prev.filter((_, i) => i !== idx))} className="text-zinc-500 hover:text-red-400 text-[10px]">&times;</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="p-2.5 border-t border-zinc-800/80">
+                <input type="file" accept="image/*" multiple ref={fileInputRef} onChange={handleImageSelect} className="hidden" />
                 <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-xl transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                    </svg>
+                  </button>
                   <input
                     ref={inputRef}
                     type="text"
@@ -222,7 +269,7 @@ export default function SiriBubble({
                   />
                   <button
                     type="submit"
-                    disabled={isLoading || !input.trim()}
+                    disabled={isLoading || (!input.trim() && uploadedImages.length === 0)}
                     className="px-3 py-2 text-xs font-medium rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white transition-colors"
                   >
                     Send
