@@ -321,7 +321,7 @@ export default function Home() {
             file={pdfFile}
             onFileUpload={handlePdfUpload}
             onTextSelected={(text) => addContextSnippet("pdf", text)}
-            className="flex-1"
+            className="flex-1 min-h-0 overflow-hidden"
           />
         </div>
 

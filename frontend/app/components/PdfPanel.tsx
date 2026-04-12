@@ -2,10 +2,15 @@
 
 import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import type { ComponentProps } from "react";
-import type PdfViewerComponent from "./PdfViewer";
 
-const PdfViewer = dynamic(() => import("./PdfViewer"), { ssr: false }) as React.ComponentType<ComponentProps<typeof PdfViewerComponent>>;
+const PdfViewer = dynamic(() => import("./PdfViewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full text-sm text-zinc-500">
+      Loading viewer...
+    </div>
+  ),
+});
 
 interface PdfPanelProps {
   file: File | null;
@@ -51,18 +56,13 @@ export default function PdfPanel({
     return (
       <div
         className={`flex flex-col items-center justify-center h-full ${className}`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragOver(true);
-        }}
+        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         <div
           className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-            isDragOver
-              ? "border-blue-500 bg-blue-500/10"
-              : "border-zinc-700 hover:border-zinc-500"
+            isDragOver ? "border-blue-500 bg-blue-500/10" : "border-zinc-700 hover:border-zinc-500"
           }`}
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 mx-auto mb-3 text-zinc-500">
@@ -81,13 +81,7 @@ export default function PdfPanel({
 
   return (
     <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf"
-        onChange={handleFileInput}
-        className="hidden"
-      />
+      <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileInput} className="hidden" />
       <PdfViewer
         file={file}
         onTextSelected={onTextSelected}
