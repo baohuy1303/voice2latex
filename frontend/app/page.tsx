@@ -42,7 +42,7 @@ export default function Home() {
   const [mode, setMode] = useState<"edit" | "tutor">("edit");
   const [isCompiling, setIsCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
-  const [compiledPdfUrl, setCompiledPdfUrl] = useState<string | null>(null);
+  const [compiledPdfFile, setCompiledPdfFile] = useState<File | null>(null);
   const [previewTab, setPreviewTab] = useState<"katex" | "pdf">("katex");
 
   // Panel widths as percentages
@@ -312,30 +312,22 @@ export default function Home() {
     }
   }, [isRecording, stopRecording, startRecording, handleSend]);
 
-  const prevPdfUrlRef = useRef<string | null>(null);
-
   const handleCompile = useCallback(async () => {
     setIsCompiling(true);
     setCompileError(null);
     try {
       const blob = await compileToPdf(document);
 
-      // Revoke old URL if any
-      if (prevPdfUrlRef.current) {
-        URL.revokeObjectURL(prevPdfUrlRef.current);
-      }
-
-      const url = URL.createObjectURL(blob);
-      prevPdfUrlRef.current = url;
-
-      setCompiledPdfUrl(url);
+      setCompiledPdfFile(new File([blob], "compiled.pdf", { type: "application/pdf" }));
       setPreviewTab("pdf");
 
-      // Trigger download
+      // Trigger download — revoke immediately after click, display uses the File
+      const url = URL.createObjectURL(blob);
       const a = window.document.createElement("a");
       a.href = url;
       a.download = "document.pdf";
       a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Compile error:", err);
       setCompileError(err instanceof Error ? err.message : "Compile failed");
@@ -525,16 +517,16 @@ export default function Home() {
               />
               <SelectionPopup containerRef={previewPanelRef} source="preview" onSendToAI={addContextSnippet} />
             </>
-          ) : compiledPdfUrl ? (
-            <iframe
-              src={compiledPdfUrl}
-              className="flex-1 w-full border-0"
-              title="Compiled PDF"
+          ) : compiledPdfFile ? (
+            <PdfPanel
+              file={compiledPdfFile}
+              onFileUpload={() => {}}
+              className="flex-1 min-h-0 overflow-hidden"
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 text-xs gap-2">
               <span>No PDF compiled yet</span>
-              <span className="text-zinc-700">Click &quot;Compile &amp; Download&quot; to generate a PDF</span>
+              <span className="text-zinc-700">Click &quot;Compile &amp; Download&quot; to generate</span>
             </div>
           )}
         </div>
