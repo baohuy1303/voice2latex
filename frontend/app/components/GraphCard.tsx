@@ -16,13 +16,6 @@ interface GraphCardProps {
   onResetView: () => void;
 }
 
-interface DragState {
-  xMin: number;
-  xMax: number;
-  yMin: number;
-  yMax: number;
-}
-
 const SAMPLE_EXPRESSIONS = ["y = x^2", "y = x + 2", "y = sin(x)", "y = cos(x)", "y = x^3 - 2x"];
 const MIN_SPAN = 0.8;
 const MAX_SPAN = 80;
@@ -56,8 +49,13 @@ export default function GraphCard({
   const [input, setInput] = useState("");
   const [isExpanded, setIsExpanded] = useState(true);
 
-  const graphHeightClass = isExpanded ? "h-[62%] min-h-[400px]" : "h-[48%] min-h-[320px]";
+  const graphHeightClass = isExpanded ? "h-[78%] min-h-[560px]" : "h-[48%] min-h-[320px]";
   const hasFunctions = functions.length > 0;
+  const layoutClass = isExpanded
+    ? "grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_220px]"
+    : "grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_178px]";
+  const graphPanelClass = isExpanded ? "p-4" : "p-3";
+  const canvasClass = isExpanded ? "rounded-2xl" : "rounded-xl";
 
   return (
     <div className={`${graphHeightClass} border-t border-zinc-800/80 bg-zinc-900/55 transition-all duration-200`}>
@@ -129,9 +127,9 @@ export default function GraphCard({
         ))}
       </div>
 
-      <div className="grid h-[calc(100%-126px)] grid-cols-1 gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_178px]">
-        <div className="flex min-h-0 flex-col rounded-xl border border-zinc-800/80 bg-zinc-950/80 p-3">
-          <div className="mb-3 flex items-center justify-end gap-3">
+      <div className={`grid h-[calc(100%-126px)] p-3 ${layoutClass}`}>
+        <div className={`flex min-h-0 flex-col rounded-xl border border-zinc-800/80 bg-zinc-950/80 ${graphPanelClass}`}>
+          <div className={`flex items-center justify-end gap-3 ${isExpanded ? "mb-4" : "mb-3"}`}>
             {hasFunctions && (
               <div className="flex items-center gap-2">
                 <button
@@ -158,12 +156,12 @@ export default function GraphCard({
 
           <div className="min-h-0 flex-1">
             {error ? (
-              <div className="flex h-full items-center justify-center rounded-xl border border-red-900/60 bg-red-950/20 px-4 text-center text-sm text-red-300">
+              <div className={`flex h-full items-center justify-center border border-red-900/60 bg-red-950/20 px-4 text-center text-sm text-red-300 ${canvasClass}`}>
                 {error}
               </div>
             ) : graph ? (
               <div
-                className="h-full w-full overflow-hidden rounded-xl border border-zinc-800/80 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.12),transparent_38%),linear-gradient(180deg,rgba(24,24,27,0.92),rgba(9,9,11,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                className={`h-full w-full overflow-hidden border border-zinc-800/80 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.12),transparent_38%),linear-gradient(180deg,rgba(24,24,27,0.92),rgba(9,9,11,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${canvasClass}`}
               >
                 <svg viewBox="0 0 100 100" className="h-full w-full overflow-visible">
                   <rect x="0" y="0" width="100" height="100" rx="4" fill="transparent" />
@@ -193,7 +191,7 @@ export default function GraphCard({
                 </svg>
               </div>
             ) : (
-              <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-zinc-700/80 bg-zinc-950/50 px-5 text-center">
+              <div className={`flex h-full flex-col items-center justify-center border border-dashed border-zinc-700/80 bg-zinc-950/50 px-5 text-center ${canvasClass}`}>
                 <p className="text-sm font-medium text-zinc-300">No graph yet</p>
                 <p className="mt-1 max-w-xs text-xs leading-relaxed text-zinc-500">
                   Use Graph Current, add a function, or tap a sample to start plotting.
@@ -203,7 +201,7 @@ export default function GraphCard({
           </div>
         </div>
 
-        <div className="min-h-0 rounded-xl border border-zinc-800/80 bg-zinc-950/70 p-3">
+        <div className={`min-h-0 rounded-xl border border-zinc-800/80 bg-zinc-950/70 ${isExpanded ? "p-4" : "p-3"}`}>
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">Functions</p>
             {hasFunctions && <span className="text-[10px] text-zinc-600">{functions.length}</span>}
