@@ -15,6 +15,7 @@ import {
   listSessions,
   uploadPdf,
   deleteSession,
+  compileToPdf,
 } from "./lib/api";
 import useMicrophone from "./hooks/useMicrophone";
 
@@ -39,6 +40,10 @@ export default function Home() {
   const [previewFontSize, setPreviewFontSize] = useState(16);
   const { isRecording, startRecording, stopRecording } = useMicrophone();
   const [mode, setMode] = useState<"edit" | "tutor">("edit");
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [compileError, setCompileError] = useState<string | null>(null);
+  const [compiledPdfUrl, setCompiledPdfUrl] = useState<string | null>(null);
+  const [previewTab, setPreviewTab] = useState<"katex" | "pdf">("katex");
 
   // Panel widths as percentages
   const [panelWidths, setPanelWidths] = useState([25, 40, 35]);
@@ -307,6 +312,41 @@ export default function Home() {
     }
   }, [isRecording, stopRecording, startRecording, handleSend]);
 
+  // Clean up compiled PDF blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (compiledPdfUrl) URL.revokeObjectURL(compiledPdfUrl);
+    };
+  }, [compiledPdfUrl]);
+
+  const handleCompile = useCallback(async () => {
+    setIsCompiling(true);
+    setCompileError(null);
+    try {
+      const blob = await compileToPdf(document);
+
+      // Revoke previous URL before creating a new one
+      setCompiledPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+
+      const url = URL.createObjectURL(blob);
+      setCompiledPdfUrl(url);
+      setPreviewTab("pdf");
+
+      // Trigger download (URL stays alive for the iframe)
+      const a = window.document.createElement("a");
+      a.href = url;
+      a.download = "document.pdf";
+      a.click();
+    } catch (err) {
+      setCompileError(err instanceof Error ? err.message : "Compile failed");
+    } finally {
+      setIsCompiling(false);
+    }
+  }, [document]);
+
   const handlePdfUpload = useCallback(
     async (file: File) => {
       setPdfFile(file);
@@ -383,8 +423,20 @@ export default function Home() {
           <button onClick={handleUndo} disabled={documentHistory.length === 0} className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 transition-colors border border-zinc-700/50">
             Undo
           </button>
+          <button
+            onClick={handleCompile}
+            disabled={isCompiling || !document.trim()}
+            className="px-3 py-1.5 text-xs rounded-md bg-indigo-700 hover:bg-indigo-600 disabled:opacity-30 transition-colors border border-indigo-600/50 text-zinc-200"
+          >
+            {isCompiling ? "Compiling..." : "Compile & Download"}
+          </button>
         </div>
       </header>
+      {compileError && (
+        <div className="px-4 py-2 text-xs text-red-400 font-mono bg-red-950/30 border-b border-red-900/30 shrink-0">
+          {compileError}
+        </div>
+      )}
 
       {/* 3-Panel Layout with draggable dividers */}
       <div ref={containerRef} className="flex flex-1 overflow-hidden relative" style={{ zIndex: 1 }}>
@@ -442,22 +494,49 @@ export default function Home() {
           onMouseDown={() => handleDividerMouseDown(1)}
         />
 
-        {/* Right: KaTeX Preview */}
+        {/* Right: Preview (KaTeX / PDF) */}
         <div ref={previewPanelRef} className="flex flex-col overflow-hidden relative" style={{ width: `${panelWidths[2]}%` }}>
-          <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between shrink-0">
-            <span>Preview</span>
+          <div className="px-3 py-2 text-xs border-b border-zinc-800/80 bg-zinc-900/50 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-1">
-              <button onClick={() => setPreviewFontSize((s) => Math.max(10, s - 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">-</button>
-              <span className="text-[9px] text-zinc-600 w-5 text-center">{previewFontSize}</span>
-              <button onClick={() => setPreviewFontSize((s) => Math.min(32, s + 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">+</button>
+              <button
+                onClick={() => setPreviewTab("katex")}
+                className={`px-2 py-0.5 rounded font-medium uppercase tracking-wider transition-colors ${previewTab === "katex" ? "text-zinc-200 bg-zinc-700/60" : "text-zinc-500 hover:text-zinc-300"}`}
+              >
+                Preview
+              </button>
+              {compiledPdfUrl && (
+                <button
+                  onClick={() => setPreviewTab("pdf")}
+                  className={`px-2 py-0.5 rounded font-medium uppercase tracking-wider transition-colors ${previewTab === "pdf" ? "text-zinc-200 bg-zinc-700/60" : "text-zinc-500 hover:text-zinc-300"}`}
+                >
+                  PDF
+                </button>
+              )}
             </div>
+            {previewTab === "katex" && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPreviewFontSize((s) => Math.max(10, s - 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">-</button>
+                <span className="text-[9px] text-zinc-600 w-5 text-center">{previewFontSize}</span>
+                <button onClick={() => setPreviewFontSize((s) => Math.min(32, s + 2))} className="w-5 h-5 flex items-center justify-center rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800">+</button>
+              </div>
+            )}
           </div>
-          <LatexPreview
-            latex={pendingDocument || document}
-            fontSize={previewFontSize}
-            className="flex-1 bg-zinc-900/40 overflow-auto latex-preview"
-          />
-          <SelectionPopup containerRef={previewPanelRef} source="preview" onSendToAI={addContextSnippet} />
+          {previewTab === "katex" ? (
+            <>
+              <LatexPreview
+                latex={pendingDocument || document}
+                fontSize={previewFontSize}
+                className="flex-1 bg-zinc-900/40 overflow-auto latex-preview"
+              />
+              <SelectionPopup containerRef={previewPanelRef} source="preview" onSendToAI={addContextSnippet} />
+            </>
+          ) : (
+            <iframe
+              src={compiledPdfUrl!}
+              className="flex-1 w-full border-0"
+              title="Compiled PDF"
+            />
+          )}
         </div>
       </div>
 

@@ -154,6 +154,21 @@ export async function streamChat(
   }
 }
 
+// --- Compile to PDF ---
+
+export async function compileToPdf(source: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/compile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || `Compile error: ${res.status}`);
+  }
+  return res.blob();
+}
+
 // --- Voice (Gemini transcription) ---
 
 export async function transcribeAudio(blob: Blob): Promise<string> {
