@@ -98,5 +98,5 @@ npm run dev
 Navigate to `http://localhost:3000` in your browser.
 
 ## Contributors
-- Huy
-- Amen Bush
+- Huy B. Huynh - https://github.com/baohuy1303
+- Amen Bush - https://github.com/amen2x
