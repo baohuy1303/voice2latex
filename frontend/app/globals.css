@@ -151,3 +151,37 @@ body {
   transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Markdown inside chat bubbles */
+.chat-markdown p {
+  margin: 0.3em 0;
+}
+
+.chat-markdown strong {
+  font-weight: 700;
+  color: inherit;
+}
+
+.chat-markdown em {
+  font-style: italic;
+}
+
+.chat-markdown ul, .chat-markdown ol {
+  margin: 0.3em 0;
+  padding-left: 1.2em;
+}
+
+.chat-markdown li {
+  margin: 0.15em 0;
+}
+
+.chat-markdown code {
+  background: rgba(255,255,255,0.1);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.chat-markdown .katex-display {
+  margin: 0.5em 0;
+}
+

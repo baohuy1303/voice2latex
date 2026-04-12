@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import katex from "katex";
+import { marked } from "marked";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -19,15 +20,33 @@ interface SiriBubbleProps {
   onClearContext: () => void;
 }
 
-function renderInlineKatex(text: string): string {
-  let html = text.replace(/\$\$([^$]+)\$\$/g, (_m, expr) => {
-    try { return katex.renderToString(expr, { displayMode: true, throwOnError: false }); }
-    catch { return `$$${expr}$$`; }
+// Configure marked for inline use (no wrapping <p> for single lines)
+marked.setOptions({ breaks: true });
+
+function renderContent(text: string): string {
+  // 1. Protect $$ and $ blocks from markdown processing
+  const mathBlocks: string[] = [];
+  let processed = text.replace(/\$\$([^$]+)\$\$/g, (_m, expr) => {
+    const idx = mathBlocks.length;
+    try { mathBlocks.push(katex.renderToString(expr, { displayMode: true, throwOnError: false })); }
+    catch { mathBlocks.push(`$$${expr}$$`); }
+    return `%%MATH${idx}%%`;
   });
-  html = html.replace(/\$([^$]+)\$/g, (_m, expr) => {
-    try { return katex.renderToString(expr, { displayMode: false, throwOnError: false }); }
-    catch { return `$${expr}$`; }
+  processed = processed.replace(/\$([^$]+)\$/g, (_m, expr) => {
+    const idx = mathBlocks.length;
+    try { mathBlocks.push(katex.renderToString(expr, { displayMode: false, throwOnError: false })); }
+    catch { mathBlocks.push(`$${expr}$`); }
+    return `%%MATH${idx}%%`;
   });
+
+  // 2. Render markdown (bold, italic, lists, etc.)
+  let html = marked.parse(processed) as string;
+
+  // 3. Restore math blocks
+  mathBlocks.forEach((block, idx) => {
+    html = html.replace(`%%MATH${idx}%%`, block);
+  });
+
   return html;
 }
 
@@ -134,14 +153,14 @@ export default function SiriBubble({
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed max-h-[60px] overflow-hidden ${
+                  className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed max-h-[60px] overflow-hidden break-words min-w-0 ${
                     msg.role === "user"
                       ? "bg-blue-600/20 text-blue-200 rounded-br-sm backdrop-blur-sm"
-                      : "bg-zinc-800/20 text-zinc-300 rounded-bl-sm backdrop-blur-sm"
+                      : "bg-zinc-800/20 text-zinc-300 rounded-bl-sm backdrop-blur-sm chat-markdown"
                   }`}
                   dangerouslySetInnerHTML={
                     msg.role === "assistant"
-                      ? { __html: renderInlineKatex(msg.content.length > 150 ? msg.content.slice(0, 150) + "..." : msg.content) }
+                      ? { __html: renderContent(msg.content.length > 150 ? msg.content.slice(0, 150) + "..." : msg.content) }
                       : undefined
                   }
                 >
@@ -182,7 +201,7 @@ export default function SiriBubble({
               animate={{ height: "auto", opacity: 1, scale: 1 }}
               exit={{ height: 0, opacity: 0, scale: 0.9 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="mb-4 w-[380px] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden"
+              className="mb-4 w-[580px] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden"
             >
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80">
                 <span className="text-xs font-medium text-zinc-400">Chat</span>
@@ -191,7 +210,7 @@ export default function SiriBubble({
                 </button>
               </div>
 
-              <div className="overflow-y-auto p-3 space-y-2.5 max-h-[300px]">
+              <div className="overflow-y-auto p-3 space-y-2.5 max-h-[500px]">
                 {messages.length === 0 && (
                   <p className="text-zinc-600 text-xs text-center mt-6">Speak or type to edit your LaTeX...</p>
                 )}
@@ -204,13 +223,13 @@ export default function SiriBubble({
                     className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                      className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed break-words min-w-0 ${
                         msg.role === "user"
                           ? "bg-blue-600/90 text-white rounded-br-sm"
-                          : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
+                          : "bg-zinc-800 text-zinc-200 rounded-bl-sm chat-markdown"
                       }`}
                       dangerouslySetInnerHTML={
-                        msg.role === "assistant" ? { __html: renderInlineKatex(msg.content) } : undefined
+                        msg.role === "assistant" ? { __html: renderContent(msg.content) } : undefined
                       }
                     >
                       {msg.role === "user" ? msg.content : undefined}

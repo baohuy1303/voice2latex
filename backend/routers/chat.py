@@ -12,7 +12,7 @@ _executor = ThreadPoolExecutor(max_workers=4)
 # Fallback in-memory history when no session_id
 _conversation_history: list[dict] = []
 MAX_HISTORY = 10
-GEMINI_TIMEOUT = 30
+GEMINI_TIMEOUT = 90
 
 
 @router.post("/chat", response_model=AgentResponse)

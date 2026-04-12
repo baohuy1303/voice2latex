@@ -242,16 +242,16 @@ Student's question: {user_message}"""
         )
 
         tutor_instruction = (
-            "You are a math tutor. The student is working on a LaTeX document. "
+            "You are a concise math tutor. The student is working on a LaTeX document. "
             "You can see their document, any uploaded images, and any highlighted PDF text they shared.\n\n"
             "RULES:\n"
-            "- Help the student understand concepts, guide them step by step.\n"
-            "- Do NOT give direct answers to homework. Use Socratic questioning.\n"
-            "- Point out mistakes and explain WHY they're wrong.\n"
-            "- You can reference specific equations in their document.\n"
-            "- Use $...$ for inline math and $$...$$ for display math in your explanations.\n"
-            "- Keep responses concise and focused.\n"
-            "- Respond with JSON: {\"action\": \"no_change\", \"new_document\": \"<same document unchanged>\", \"reply\": \"<your teaching response>\"}"
+            "- Give clear, focused explanations. Be concise — 2-4 sentences per concept is ideal.\n"
+            "- Point out mistakes and explain briefly why they're wrong.\n"
+            "- Reference specific equations in their document when relevant.\n"
+            "- Use $...$ for inline math and $$...$$ for display math.\n"
+            "- You may use markdown: **bold**, *italic*, short bullet lists.\n\n"
+            "RESPONSE FORMAT:\n"
+            "Respond with JSON: {\"action\": \"no_change\", \"new_document\": \"<same document unchanged>\", \"reply\": \"<your concise teaching response>\"}"
         )
 
         config = GenerateContentConfig(
@@ -274,9 +274,9 @@ Student's question: {user_message}"""
                 try:
                     result = json.loads(json_match.group())
                 except json.JSONDecodeError:
-                    result = {"action": "no_change", "new_document": document, "reply": final_text[:500]}
+                    result = {"action": "no_change", "new_document": document, "reply": final_text}
             else:
-                result = {"action": "no_change", "new_document": document, "reply": final_text[:500] or "I'm here to help!"}
+                result = {"action": "no_change", "new_document": document, "reply": final_text or "I'm here to help!"}
 
         # Force no document changes in tutor mode
         result["action"] = "no_change"
@@ -482,11 +482,18 @@ Respond with JSON: {{"action": "replace_all"|"no_change", "new_document": "<full
 
     sys_instruction = SYSTEM_PROMPT
     if mode == "tutor":
-        sys_instruction += "\n\n***TUTOR MODE INSTRUCTIONS***\n" \
-                           "You are in TUTOR MODE. You MUST NEVER overwrite the user's document.\n" \
-                           "Do NOT provide direct answers to homework or let them cheat. Act as a Socratic tutor guiding the student.\n" \
-                           "Focus strictly on pedagogy and explanations.\n" \
-                           "Always respond with JSON: {\"action\": \"no_change\", \"new_document\": <same doc as input>, \"reply\": <your lesson>}"
+        sys_instruction = (
+            "You are a concise math tutor. The student is working on a LaTeX document. "
+            "You can see their document, any uploaded images, and any highlighted PDF text they shared.\n\n"
+            "RULES:\n"
+            "- Give clear, focused explanations. Be concise — 2-4 sentences per concept is ideal.\n"
+            "- Point out mistakes and explain briefly why they're wrong.\n"
+            "- Reference specific equations in their document when relevant.\n"
+            "- Use $...$ for inline math and $$...$$ for display math.\n"
+            "- You may use markdown: **bold**, *italic*, short bullet lists.\n\n"
+            "RESPONSE FORMAT:\n"
+            "Respond with JSON: {\"action\": \"no_change\", \"new_document\": \"<same document unchanged>\", \"reply\": \"<your concise teaching response>\"}"
+        )
 
     config = GenerateContentConfig(
         system_instruction=sys_instruction,
@@ -518,9 +525,9 @@ Respond with JSON: {{"action": "replace_all"|"no_change", "new_document": "<full
             try:
                 result = json.loads(json_match.group())
             except json.JSONDecodeError:
-                result = {"action": "no_change", "new_document": document, "reply": full_text[:300]}
+                result = {"action": "no_change", "new_document": document, "reply": full_text}
         else:
-            result = {"action": "no_change", "new_document": document, "reply": full_text[:300] or "No response"}
+            result = {"action": "no_change", "new_document": document, "reply": full_text or "No response"}
 
     # Sanitize
     if "new_document" in result:
