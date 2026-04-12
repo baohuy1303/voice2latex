@@ -14,6 +14,7 @@ import {
   getSession,
   listSessions,
   uploadPdf,
+  deleteSession,
 } from "./lib/api";
 import useMicrophone from "./hooks/useMicrophone";
 
@@ -44,6 +45,27 @@ export default function Home() {
   const isDraggingDivider = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const previewPanelRef = useRef<HTMLDivElement>(null);
+
+  const formatSessionId = (id: string) => {
+    // Expected: YYYYMMDD_HHMMSS
+    if (/^\d{8}_\d{6}/.test(id)) {
+      const year = id.slice(0, 4);
+      const month = id.slice(4, 6);
+      const day = id.slice(6, 8);
+      const hour = id.slice(9, 11);
+      const min = id.slice(11, 13);
+      const sec = id.slice(13, 15);
+      
+      const date = new Date(`${year}-${month}-${day}T${hour}:${min}:${sec}`);
+      return date.toLocaleString(undefined, { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: 'numeric', 
+        minute: 'numeric' 
+      });
+    }
+    return id;
+  };
 
   // --- Draggable dividers ---
   const handleDividerMouseDown = useCallback((dividerIndex: number) => {
@@ -187,6 +209,20 @@ export default function Home() {
     setPendingDocument(null);
   }, []);
 
+  const handleDeleteSession = useCallback(async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this session?")) return;
+    try {
+      await deleteSession(id);
+      if (sessionId === id) {
+        handleClearSession();
+        setSessionId(null);
+        localStorage.removeItem("voice2latex_session");
+      }
+      await refreshSessions();
+    } catch { /* error */ }
+  }, [sessionId, handleClearSession, refreshSessions]);
+
   const pushHistory = useCallback((doc: string) => {
     setDocumentHistory((prev) => [...prev.slice(-49), doc]);
   }, []);
@@ -312,21 +348,36 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-2">
-          <select
-            value={sessionId || ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val === "__new__") handleNewSession();
-              else if (val) handleLoadSession(val);
-            }}
-            className="bg-zinc-800 text-zinc-400 text-xs rounded-md px-2 py-1.5 outline-none border border-zinc-700/50 cursor-pointer hover:border-zinc-600"
-          >
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>Session {s.id}</option>
-            ))}
-            <option value="__new__">+ New session</option>
-          </select>
-          <button onClick={handleClearSession} className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 transition-colors border border-zinc-700/50">
+          <div className="flex items-center bg-zinc-800 rounded-md border border-zinc-700/50">
+            <select
+              value={sessionId || ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "__new__") handleNewSession();
+                else if (val) handleLoadSession(val);
+              }}
+              className="bg-transparent text-zinc-400 text-xs px-2 py-1.5 outline-none cursor-pointer hover:text-zinc-200 min-w-[140px]"
+            >
+              {sessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {formatSessionId(s.id)}
+                </option>
+              ))}
+              <option value="__new__">+ New session</option>
+            </select>
+            {sessionId && (
+              <button 
+                onClick={(e) => handleDeleteSession(e, sessionId)}
+                className="p-1.5 text-zinc-500 hover:text-red-400 border-l border-zinc-700/50 transition-colors"
+                title="Delete session"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                  <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.52.149.023a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clipRule="evenodd" />
+                </svg>
+              </button>
+            )}
+          </div>
+          <button onClick={handleClearSession} className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 transition-colors border border-zinc-700/50 text-zinc-400">
             Clear
           </button>
           <button onClick={handleUndo} disabled={documentHistory.length === 0} className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 transition-colors border border-zinc-700/50">

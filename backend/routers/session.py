@@ -9,6 +9,7 @@ from services.session_store import (
     save_pdf,
     get_pdf_path,
     list_sessions,
+    delete_session,
 )
 
 router = APIRouter()
@@ -60,3 +61,10 @@ async def get_pdf(session_id: str):
     if not pdf_path:
         raise HTTPException(status_code=404, detail="No PDF uploaded")
     return FileResponse(pdf_path, media_type="application/pdf")
+
+
+@router.delete("/session/{session_id}")
+async def delete_session_state(session_id: str):
+    if not delete_session(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"status": "deleted"}

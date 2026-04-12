@@ -47,6 +47,11 @@ export async function listSessions(): Promise<Array<{ id: string; updated_at: st
   return res.json();
 }
 
+export async function deleteSession(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/session/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to delete session: ${res.status}`);
+}
+
 export async function uploadPdf(sessionId: string, file: File): Promise<void> {
   const formData = new FormData();
   formData.append("file", file);
