@@ -4,6 +4,8 @@ Voice2LaTeX is an AI-assisted math workspace for creating, editing, and refining
 
 The workspace is designed for fast local demos and practical math workflows. Users can reference PDFs while working, send text or voice instructions to the assistant, review pending document changes before applying them, undo edits, and compile the current document into a downloadable PDF. The result is a focused environment for iterative math authoring rather than a generic chatbot experience.
 
+This repository is intended to be easy to run locally for demos, team handoff, and rapid iteration.
+
 ## What It Does
 
 Voice2LaTeX allows users to:
