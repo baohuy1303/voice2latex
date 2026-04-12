@@ -78,18 +78,29 @@ export async function sendChatMessage(
   return res.json();
 }
 
-// --- Voice ---
+// --- Voice (direct Gemini audio) ---
 
-export async function transcribeAudio(blob: Blob): Promise<string> {
+export interface VoiceResponse extends AgentResponse {
+  transcript?: string;
+}
+
+export async function sendVoiceCommand(
+  blob: Blob,
+  document: string,
+  sessionId?: string,
+  context?: string
+): Promise<VoiceResponse> {
   const formData = new FormData();
   formData.append("file", blob, "recording.webm");
+  formData.append("document", document);
+  if (sessionId) formData.append("session_id", sessionId);
+  if (context) formData.append("context", context);
 
-  const res = await fetch(`${API_BASE}/voice/transcribe`, {
+  const res = await fetch(`${API_BASE}/voice/command`, {
     method: "POST",
     body: formData,
   });
 
-  if (!res.ok) throw new Error(`Transcription error: ${res.status}`);
-  const data = await res.json();
-  return data.transcript;
+  if (!res.ok) throw new Error(`Voice command error: ${res.status}`);
+  return res.json();
 }

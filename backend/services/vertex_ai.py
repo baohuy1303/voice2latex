@@ -197,7 +197,7 @@ def call_gemini(
     5. If bad patterns remain, retry once
     """
     client = get_client()
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
     # Build contents
     contents = []
@@ -341,5 +341,109 @@ If the user asks to solve, simplify, differentiate, or integrate, use the approp
                     result["new_document"] = fixed_result["new_document"]
             except Exception:
                 pass
+
+    return result
+
+
+def call_gemini_with_audio(
+    audio_bytes: bytes,
+    document: str,
+    history: list[dict] | None = None,
+    context: str | None = None,
+) -> dict:
+    """Send audio directly to Gemini — it transcribes, understands, and edits in one call.
+
+    Returns the same dict format as call_gemini, plus a 'transcript' field.
+    """
+    client = get_client()
+    model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+
+    contents = []
+
+    if history:
+        for msg in history:
+            contents.append(
+                genai.types.Content(
+                    role=msg["role"],
+                    parts=[genai.types.Part(text=msg["content"])],
+                )
+            )
+
+    # Build multi-part user message: audio + text context
+    parts = [
+        genai.types.Part.from_bytes(data=audio_bytes, mime_type="audio/webm"),
+    ]
+
+    context_text = f"""The audio above is a voice command from the user about their LaTeX document.
+
+Current document:
+```latex
+{document}
+```"""
+
+    if context:
+        context_text += f"""
+
+Reference material (from uploaded PDF):
+\"\"\"
+{context}
+\"\"\"
+"""
+
+    context_text += """
+
+Instructions:
+1. First, transcribe exactly what the user said.
+2. Then, interpret their intent and modify the document accordingly.
+3. Return JSON with this schema:
+{"action": "replace_all"|"no_change", "new_document": "<full updated document>", "reply": "<what you did>", "explanation": "<optional steps>", "transcript": "<what the user said>"}
+
+IMPORTANT: When the user says to "add", "write", or "put" something, you MUST modify the document and use action "replace_all". Only use "no_change" if the user is asking a question without requesting document changes."""
+
+    parts.append(genai.types.Part(text=context_text))
+
+    contents.append(
+        genai.types.Content(role="user", parts=parts)
+    )
+
+    config = GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        temperature=0.2,
+    )
+
+    response = client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=config,
+    )
+
+    final_text = response.text or ""
+
+    # Parse JSON from response
+    try:
+        result = json.loads(final_text)
+    except json.JSONDecodeError:
+        json_match = re.search(r'\{[\s\S]*\}', final_text)
+        if json_match:
+            try:
+                result = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                result = {
+                    "action": "no_change",
+                    "new_document": document,
+                    "reply": final_text[:500],
+                    "transcript": "",
+                }
+        else:
+            result = {
+                "action": "no_change",
+                "new_document": document,
+                "reply": final_text[:500] if final_text else "Could not process audio.",
+                "transcript": "",
+            }
+
+    # Sanitize LaTeX
+    if "new_document" in result:
+        result["new_document"] = sanitize_latex(result["new_document"])
 
     return result

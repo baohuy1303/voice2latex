@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import PdfPanel from "./components/PdfPanel";
 import EditorPanel from "./components/EditorPanel";
 import LatexPreview from "./components/LatexPreview";
+import SiriBubble from "./components/SiriBubble";
 import {
   sendChatMessage,
-  transcribeAudio,
+  sendVoiceCommand,
   createSession,
   getSession,
-  saveSession,
+  listSessions,
   uploadPdf,
 } from "./lib/api";
 import useMicrophone from "./hooks/useMicrophone";
@@ -25,11 +26,15 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Array<{ id: string; updated_at: string }>>([]);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfContext, setPdfContext] = useState<string | null>(null);
-  const [chatInput, setChatInput] = useState("");
-  const { isRecording, startRecording, stopRecording, error: micError } = useMicrophone();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const { isRecording, startRecording, stopRecording } = useMicrophone();
+
+  const refreshSessions = useCallback(async () => {
+    const list = await listSessions();
+    setSessions(list);
+  }, []);
 
   // Initialize session on mount
   useEffect(() => {
@@ -40,6 +45,13 @@ export default function Home() {
           const state = await getSession(savedId);
           setSessionId(state.id);
           setDocument(state.document);
+          setMessages(
+            (state.history || []).map((h: { role: string; content: string }) => ({
+              role: h.role === "model" ? "assistant" as const : "user" as const,
+              content: h.content,
+            }))
+          );
+          await refreshSessions();
           return;
         } catch {
           // Session not found, create new
@@ -48,8 +60,48 @@ export default function Home() {
       const state = await createSession();
       setSessionId(state.id);
       localStorage.setItem("voice2latex_session", state.id);
+      await refreshSessions();
     }
     init();
+  }, [refreshSessions]);
+
+  const handleNewSession = useCallback(async () => {
+    const state = await createSession();
+    setSessionId(state.id);
+    setDocument("");
+    setMessages([]);
+    setDocumentHistory([]);
+    setPdfFile(null);
+    setPdfContext(null);
+    localStorage.setItem("voice2latex_session", state.id);
+    await refreshSessions();
+  }, [refreshSessions]);
+
+  const handleLoadSession = useCallback(async (id: string) => {
+    try {
+      const state = await getSession(id);
+      setSessionId(state.id);
+      setDocument(state.document);
+      setMessages(
+        (state.history || []).map((h: { role: string; content: string }) => ({
+          role: h.role === "model" ? "assistant" as const : "user" as const,
+          content: h.content,
+        }))
+      );
+      setDocumentHistory([]);
+      setPdfFile(null);
+      setPdfContext(null);
+      localStorage.setItem("voice2latex_session", state.id);
+    } catch {
+      // Session not found
+    }
+  }, []);
+
+  const handleClearSession = useCallback(() => {
+    setDocument("");
+    setMessages([]);
+    setDocumentHistory([]);
+    setPdfContext(null);
   }, []);
 
   const pushHistory = useCallback((doc: string) => {
@@ -89,7 +141,6 @@ export default function Home() {
           setDocument(res.new_document);
         }
 
-        // Clear PDF context after use
         setPdfContext(null);
       } catch {
         setMessages((prev) => [
@@ -110,21 +161,37 @@ export default function Home() {
 
       setIsLoading(true);
       try {
-        const transcript = await transcribeAudio(blob);
-        if (transcript) {
-          await handleSend(transcript);
+        const res = await sendVoiceCommand(
+          blob,
+          document,
+          sessionId || undefined,
+          pdfContext || undefined
+        );
+
+        const transcript = res.transcript || "(voice command)";
+        setMessages((prev) => [...prev, { role: "user", content: transcript }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: res.reply },
+        ]);
+
+        if (res.action !== "no_change" && res.new_document !== document) {
+          pushHistory(document);
+          setDocument(res.new_document);
         }
+        setPdfContext(null);
       } catch {
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: "Error: Could not process voice." },
         ]);
+      } finally {
         setIsLoading(false);
       }
     } else {
       await startRecording();
     }
-  }, [isRecording, stopRecording, startRecording, handleSend]);
+  }, [isRecording, stopRecording, startRecording, document, sessionId, pdfContext, pushHistory]);
 
   const handlePdfUpload = useCallback(
     async (file: File) => {
@@ -136,14 +203,6 @@ export default function Home() {
     [sessionId]
   );
 
-  const handleChatSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (chatInput.trim()) {
-      handleSend(chatInput.trim());
-      setChatInput("");
-    }
-  };
-
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100">
       {/* Header */}
@@ -152,11 +211,32 @@ export default function Home() {
           Voice2LaTeX
         </h1>
         <div className="flex items-center gap-2">
-          {sessionId && (
-            <span className="text-[10px] text-zinc-600 font-mono">
-              {sessionId}
-            </span>
-          )}
+          {/* Session dropdown */}
+          <select
+            value={sessionId || ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "__new__") {
+                handleNewSession();
+              } else if (val) {
+                handleLoadSession(val);
+              }
+            }}
+            className="bg-zinc-800 text-zinc-400 text-xs rounded-md px-2 py-1.5 outline-none border border-zinc-700/50 cursor-pointer hover:border-zinc-600"
+          >
+            {sessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                Session {s.id}
+              </option>
+            ))}
+            <option value="__new__">+ New session</option>
+          </select>
+          <button
+            onClick={handleClearSession}
+            className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 transition-colors border border-zinc-700/50"
+          >
+            Clear
+          </button>
           <button
             onClick={handleUndo}
             disabled={documentHistory.length === 0}
@@ -168,7 +248,7 @@ export default function Home() {
       </header>
 
       {/* 3-Panel Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative" style={{ zIndex: 1 }}>
         {/* Left: PDF Viewer */}
         <div className="w-[25%] min-w-[200px] border-r border-zinc-800/80 flex flex-col bg-zinc-900/30">
           <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800/80 font-medium uppercase tracking-wider bg-zinc-900/50 flex items-center justify-between">
@@ -214,89 +294,16 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Bottom: Temporary Chat Bar (replaced by Siri Bubble in Phase 4) */}
-      <div className="shrink-0 border-t border-zinc-800/80 bg-zinc-900/95 backdrop-blur-sm px-4 py-2.5">
-        {/* PDF context badge */}
-        {pdfContext && (
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] uppercase tracking-wider text-blue-400 font-medium">Context:</span>
-            <span className="text-xs text-zinc-400 truncate max-w-md">
-              &ldquo;{pdfContext.slice(0, 80)}...&rdquo;
-            </span>
-            <button
-              onClick={() => setPdfContext(null)}
-              className="text-zinc-500 hover:text-zinc-300 text-xs"
-            >
-              x
-            </button>
-          </div>
-        )}
-
-        {/* Messages row */}
-        {messages.length > 0 && (
-          <div className="flex gap-3 mb-2 overflow-x-auto">
-            {messages.slice(-3).map((msg, i) => (
-              <span
-                key={i}
-                className={`text-xs shrink-0 px-2 py-1 rounded ${
-                  msg.role === "user"
-                    ? "bg-blue-600/20 text-blue-300"
-                    : "bg-zinc-800 text-zinc-400"
-                }`}
-              >
-                {msg.content.slice(0, 60)}{msg.content.length > 60 ? "..." : ""}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <form onSubmit={handleChatSubmit} className="flex gap-2 items-center">
-          {/* Mic button */}
-          <button
-            type="button"
-            onClick={handleMicToggle}
-            disabled={isLoading}
-            className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all disabled:opacity-40 ${
-              isRecording
-                ? "bg-red-500 mic-recording"
-                : "bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50"
-            }`}
-          >
-            {isRecording ? (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-white">
-                <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-zinc-400">
-                <path d="M12 1a4 4 0 0 0-4 4v7a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4Z" />
-                <path d="M6 10a1 1 0 0 0-2 0 8 8 0 0 0 7 7.93V21H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.07A8 8 0 0 0 20 10a1 1 0 1 0-2 0 6 6 0 0 1-12 0Z" />
-              </svg>
-            )}
-          </button>
-
-          <input
-            ref={inputRef}
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            placeholder={isRecording ? "Listening..." : "Type a command..."}
-            disabled={isLoading || isRecording}
-            className="flex-1 bg-zinc-800 text-zinc-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 placeholder-zinc-500 disabled:opacity-50 border border-zinc-700/50"
-          />
-
-          <button
-            type="submit"
-            disabled={isLoading || !chatInput.trim()}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors"
-          >
-            {isLoading ? "..." : "Send"}
-          </button>
-        </form>
-
-        {micError && (
-          <p className="text-xs text-red-400 mt-1">{micError}</p>
-        )}
-      </div>
+      {/* Floating Siri Bubble */}
+      <SiriBubble
+        messages={messages}
+        isLoading={isLoading}
+        isRecording={isRecording}
+        onMicToggle={handleMicToggle}
+        onSend={handleSend}
+        pdfContext={pdfContext}
+        onClearContext={() => setPdfContext(null)}
+      />
     </div>
   );
 }

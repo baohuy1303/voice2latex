@@ -22,3 +22,4 @@ class AgentResponse(BaseModel):
     new_document: str
     reply: str
     explanation: Optional[str] = None
+    transcript: Optional[str] = None

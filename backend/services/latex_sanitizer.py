@@ -7,6 +7,20 @@ before the output reaches the frontend. Zero latency cost.
 import re
 
 
+def _fix_braces_in_block(block: str) -> str:
+    """Fix unmatched braces within a single $$ block."""
+    open_count = block.count('{')
+    close_count = block.count('}')
+    if open_count > close_count:
+        block += '}' * (open_count - close_count)
+    elif close_count > open_count:
+        for _ in range(close_count - open_count):
+            idx = block.rfind('}')
+            if idx != -1:
+                block = block[:idx] + block[idx + 1:]
+    return block
+
+
 def sanitize_latex(latex: str) -> str:
     """Fix common KaTeX-incompatible patterns in LaTeX output."""
 
@@ -31,12 +45,9 @@ def sanitize_latex(latex: str) -> str:
     )
 
     # 5. Convert \begin{align}...\end{align} to separate $$ blocks
-    # Split on \\ within align and wrap each line in $$
     def convert_align(match: re.Match) -> str:
         body = match.group(1)
-        # Remove alignment characters &
         body = body.replace('&', '')
-        # Split on \\ (line breaks)
         lines = re.split(r'\\\\', body)
         result = []
         for line in lines:
@@ -52,26 +63,41 @@ def sanitize_latex(latex: str) -> str:
         flags=re.DOTALL,
     )
 
-    # 6. Remove \label{...} and \tag{...} (unless simple tag)
+    # 6. Remove \label{...}
     latex = re.sub(r'\\label\{[^}]*\}', '', latex)
 
-    # 7. Remove preamble commands that sometimes leak through
+    # 7. Remove preamble commands
     latex = re.sub(r'\\usepackage\{[^}]*\}', '', latex)
     latex = re.sub(r'\\documentclass\{[^}]*\}', '', latex)
 
-    # 8. Fix unmatched braces (simple heuristic: count { and })
-    open_count = latex.count('{')
-    close_count = latex.count('}')
-    if open_count > close_count:
-        latex += '}' * (open_count - close_count)
-    elif close_count > open_count:
-        # Remove trailing extra }
-        for _ in range(close_count - open_count):
-            idx = latex.rfind('}')
-            if idx != -1:
-                latex = latex[:idx] + latex[idx + 1:]
+    # 8. Fix \text{} blocks that contain unbalanced braces — a common Gemini mistake
+    # e.g., $$\text{Step 1: Isolate the } x^2 \text{ term}}$$ -> pull text out
+    # Remove $$ blocks that are purely text descriptions (no actual math)
+    def clean_text_only_blocks(match: re.Match) -> str:
+        content = match.group(1).strip()
+        # If the block is just \text{...} with no math, convert to plain text
+        stripped = re.sub(r'\\text\{([^}]*)\}', r'\1', content).strip()
+        # Check if there's any remaining LaTeX commands
+        if not re.search(r'[\\^_{}]', stripped):
+            return stripped
+        return f"$${content}$$"
 
-    # 9. Clean up excessive blank lines
+    latex = re.sub(r'\$\$((?:\\text\{[^}]*\}\s*)+)\$\$', clean_text_only_blocks, latex)
+
+    # 9. Fix braces within each $$ block individually
+    parts = latex.split('$$')
+    fixed_parts = []
+    for i, part in enumerate(parts):
+        if i % 2 == 1:  # Inside $$ block (math content)
+            fixed_parts.append(_fix_braces_in_block(part))
+        else:
+            fixed_parts.append(part)
+    latex = '$$'.join(fixed_parts)
+
+    # 10. Remove duplicate $$ (e.g., $$$$ from bad concatenation)
+    latex = re.sub(r'\${3,}', '$$', latex)
+
+    # 11. Clean up excessive blank lines
     latex = re.sub(r'\n{3,}', '\n\n', latex)
 
     return latex.strip()

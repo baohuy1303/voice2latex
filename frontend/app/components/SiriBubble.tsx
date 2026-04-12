@@ -1,0 +1,262 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import katex from "katex";
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface SiriBubbleProps {
+  messages: ChatMessage[];
+  isLoading: boolean;
+  isRecording: boolean;
+  onMicToggle: () => void;
+  onSend: (message: string) => void;
+  pdfContext: string | null;
+  onClearContext: () => void;
+}
+
+function renderInlineKatex(text: string): string {
+  let html = text.replace(/\$\$([^$]+)\$\$/g, (_m, expr) => {
+    try {
+      return katex.renderToString(expr, { displayMode: true, throwOnError: false });
+    } catch {
+      return `$$${expr}$$`;
+    }
+  });
+  html = html.replace(/\$([^$]+)\$/g, (_m, expr) => {
+    try {
+      return katex.renderToString(expr, { displayMode: false, throwOnError: false });
+    } catch {
+      return `$${expr}$`;
+    }
+  });
+  return html;
+}
+
+export default function SiriBubble({
+  messages,
+  isLoading,
+  isRecording,
+  onMicToggle,
+  onSend,
+  pdfContext,
+  onClearContext,
+}: SiriBubbleProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    if (isExpanded) {
+      inputRef.current?.focus();
+    }
+  }, [isExpanded]);
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      const trimmed = input.trim();
+      if (!trimmed || isLoading) return;
+      onSend(trimmed);
+      setInput("");
+    },
+    [input, isLoading, onSend]
+  );
+
+  const siriState = isRecording
+    ? "siri-recording"
+    : isLoading
+    ? "siri-thinking"
+    : "siri-idle";
+
+  const showFloatingMessages = messages.length > 0 || isLoading;
+
+  return (
+    <>
+      {/* Floating conversation bubbles — always visible above the orb */}
+      {showFloatingMessages && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 w-[360px] flex flex-col gap-1.5 pointer-events-none"
+          style={{ zIndex: 9998, bottom: isExpanded ? "auto" : "90px" , display: isExpanded ? "none" : "flex" }}
+        >
+          {messages.slice(-4).map((msg, i) => (
+            <div
+              key={i}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} pointer-events-auto`}
+            >
+              <div
+                className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed shadow-lg ${
+                  msg.role === "user"
+                    ? "bg-blue-600/80 text-white rounded-br-sm backdrop-blur-md"
+                    : "bg-zinc-800/90 text-zinc-200 rounded-bl-sm border border-zinc-700/30 backdrop-blur-md"
+                }`}
+                dangerouslySetInnerHTML={
+                  msg.role === "assistant"
+                    ? { __html: renderInlineKatex(msg.content) }
+                    : undefined
+                }
+              >
+                {msg.role === "user" ? msg.content : undefined}
+              </div>
+            </div>
+          ))}
+          {isLoading && (
+            <div className="flex justify-start pointer-events-auto">
+              <div className="bg-zinc-800/90 backdrop-blur-md rounded-2xl rounded-bl-sm px-3 py-1.5 text-xs text-zinc-400 flex gap-1 border border-zinc-700/30 shadow-lg">
+                <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main bubble container — orb + chat panel */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center" style={{ zIndex: 9999 }}>
+        {/* Expanded chat panel */}
+        {isExpanded && (
+          <div className="bubble-chat mb-4 w-[380px] max-h-[420px] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-2xl shadow-2xl shadow-black/40 flex flex-col overflow-hidden">
+            {/* Chat header */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80">
+              <span className="text-xs font-medium text-zinc-400">Chat</span>
+              <button
+                onClick={() => setIsExpanded(false)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[150px] max-h-[300px]">
+              {messages.length === 0 && (
+                <p className="text-zinc-600 text-xs text-center mt-6">
+                  Speak or type to edit your LaTeX...
+                </p>
+              )}
+              {messages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                      msg.role === "user"
+                        ? "bg-blue-600/90 text-white rounded-br-sm"
+                        : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
+                    }`}
+                    dangerouslySetInnerHTML={
+                      msg.role === "assistant"
+                        ? { __html: renderInlineKatex(msg.content) }
+                        : undefined
+                    }
+                  >
+                    {msg.role === "user" ? msg.content : undefined}
+                  </div>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-zinc-800 rounded-2xl rounded-bl-sm px-3 py-2 text-xs text-zinc-400 flex gap-1">
+                    <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* PDF context badge */}
+            {pdfContext && (
+              <div className="mx-3 mb-1 flex items-center gap-1.5 px-2 py-1 bg-blue-950/50 border border-blue-800/30 rounded-lg">
+                <span className="text-[9px] uppercase tracking-wider text-blue-400 font-medium">PDF</span>
+                <span className="text-[10px] text-zinc-400 truncate flex-1">
+                  {pdfContext.slice(0, 50)}...
+                </span>
+                <button onClick={onClearContext} className="text-zinc-500 hover:text-zinc-300 text-[10px]">
+                  &times;
+                </button>
+              </div>
+            )}
+
+            {/* Input */}
+            <form onSubmit={handleSubmit} className="p-2.5 border-t border-zinc-800/80">
+              <div className="flex gap-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Type a command..."
+                  disabled={isLoading}
+                  className="flex-1 bg-zinc-800/80 text-zinc-100 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-indigo-500/50 placeholder-zinc-500 disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !input.trim()}
+                  className="px-3 py-2 text-xs font-medium rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white transition-colors"
+                >
+                  Send
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Controls row */}
+        <div className="flex items-center gap-3">
+          {/* Chat toggle */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border ${
+              isExpanded
+                ? "bg-zinc-700 border-zinc-600 text-white"
+                : "bg-zinc-900/90 border-zinc-700/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4.5 h-4.5">
+              <path d="M4.913 2.658c2.075-.27 4.19-.408 6.337-.408 2.147 0 4.262.139 6.337.408 1.922.25 3.291 1.861 3.405 3.727a4.403 4.403 0 0 0-1.032-.211 50.89 50.89 0 0 0-8.42 0c-2.358.196-4.04 2.19-4.04 4.434v4.286a4.47 4.47 0 0 0 2.433 3.984L7.28 21.53A.75.75 0 0 1 6 20.97V18.9a49.8 49.8 0 0 1-1.087-.058C2.99 18.63 1.5 16.963 1.5 14.97V6.385c0-1.866 1.369-3.477 3.413-3.727ZM15.75 7.5c-1.376 0-2.739.057-4.086.169C10.124 7.797 9 9.103 9 10.609v4.285c0 1.507 1.128 2.814 2.67 2.94 1.243.102 2.5.157 3.768.165l2.782 2.781a.75.75 0 0 0 1.28-.53v-2.39l.33-.026c1.542-.125 2.67-1.433 2.67-2.94v-4.286c0-1.505-1.125-2.811-2.664-2.94A49.392 49.392 0 0 0 15.75 7.5Z" />
+            </svg>
+          </button>
+
+          {/* Siri voice orb */}
+          <button
+            onClick={onMicToggle}
+            disabled={isLoading}
+            className={`w-16 h-16 rounded-full flex items-center justify-center transition-all disabled:opacity-40 ${siriState}`}
+          >
+            {isRecording ? (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-white/90 drop-shadow-lg">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            ) : isLoading ? (
+              <div className="flex gap-1">
+                <span className="w-1.5 h-1.5 bg-white/80 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 bg-white/80 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 bg-white/80 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-white/90 drop-shadow-lg">
+                <path d="M12 1a4 4 0 0 0-4 4v7a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4Z" />
+                <path d="M6 10a1 1 0 0 0-2 0 8 8 0 0 0 7 7.93V21H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.07A8 8 0 0 0 20 10a1 1 0 1 0-2 0 6 6 0 0 1-12 0Z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Spacer for symmetry */}
+          <div className="w-10" />
+        </div>
+      </div>
+    </>
+  );
+}
