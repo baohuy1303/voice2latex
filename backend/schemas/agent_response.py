@@ -13,6 +13,8 @@ class ActionType(str, Enum):
 class ChatRequest(BaseModel):
     message: str
     document: str
+    session_id: Optional[str] = None
+    context: Optional[str] = None
 
 
 class AgentResponse(BaseModel):

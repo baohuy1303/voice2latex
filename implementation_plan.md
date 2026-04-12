@@ -1,72 +1,85 @@
-# Voice-to-LaTeX AI Editor Implementation Plan
+# Voice-to-LaTeX AI Editor — Refined Implementation Plan
 
-This document outlines the finalized phase-by-phase implementation plan for building the Voice-to-LaTeX AI Editor (Agentic Math Workspace) as a 20-hour hackathon project, built fundamentally on Google Cloud infrastructure.
+This document outlines the finalized and updated phase-by-phase implementation plan based on your latest requirements including Response Streaming, Universal Review, the 3-Panel Layout, Bubble UI, and Session Management.
 
-## Proposed Tech Stack (Google Ecosystem Focus)
+## Tech Stack & Architecture (Google Stack Focus)
 
-- **Frontend:** Next.js (React), **Tailwind CSS** for styling, Framer Motion for smooth transitions between Voice/Chat modes.
-- **Editor:** A fully functional code/text editor (e.g., Monaco Editor or a standard `textarea`) allowing basic typing, copy-pasting, and raw manual editing alongside the AI functionality.
-- **LaTeX Rendering:** KaTeX (faster, great for React) or MathJax.
-- **Backend Orchestration:** FastAPI (Python) for execution, WebSocket support, and Python ecosystem integration.
-- **AI/Reasoning Machine:** **Google Vertex AI**.
-  - **Vertex AI Agent Layer:** Used to govern the overall control flow and logic.
-  - **Structured JSON Output:** Guaranteeing safe, deterministic edits (e.g., returning `{ "intent": "edit", "new_latex": "..."}`).
-  - **Tool Calling System:** Explicitly defined functions (e.g., `solve_sympy`, `format_latex`) registered with Vertex AI.
-- **Voice (STT):** **Google Cloud Speech-to-Text** to ensure high-fidelity math/speech transcription and deep GCP integration.
-- **Math Solver:** Dual-engine. Gemini acts as the main reasoning brain, natively invoking **SymPy (Python)** via explicit Tool Calling to verify and solve equations deterministically.
-- **Deployment (Stretch Goal):** Google Cloud Run (for the FastAPI backend server) and Firebase Hosting or Google Cloud Run (for the Next.js frontend).
-
----
-
-## 🛠 Model Design & State Management
-
-### The Document State & Structured Output
-The system uses a **Single Long LaTeX String** but utilizes **Gemini's Structured JSON Output** to ensure the edits are perfectly stable.
-1. Frontend holds the entire document as one string.
-2. User asks the agent to modify the document.
-3. FastAPI backend prompts Vertex AI, enforcing a JSON Schema response.
-4. Vertex AI replies deterministically (e.g., `{ "action": "replace", "original_snippet": "x+1", "new_snippet": "\\int (x+1) dx", "full_document": "..." }`).
-5. Frontend diffs the changes into the editor panes.
-
-### SymPy Math Tool Call Lifecycle
-1. User provides a command like: "Solve this equation".
-2. Vertex AI identifies the intent and invokes the explicit `solve_equation_sympy` tool via the **Tool Calling System**.
-3. SymPy tool computes the step-by-step LaTeX solution on the backend.
-4. Vertex AI gathers the output, frames it elegantly into Structured JSON, and flags it as a "suggestion".
-5. Frontend displays a diff/preview. User confirms insertion, and the doc updates.
+- **Frontend:** Next.js (React), Tailwind CSS, Framer Motion.
+- **UI Components:** 
+  - **Left Panel:** PDF Viewer / Assignment Viewer (react-pdf or standard iframe block).
+  - **Middle Panel:** Code/Text Editor (handling raw LaTeX).
+  - **Right Panel:** Live KaTeX/MathJax preview.
+  - **Floating Interface:** Bottom-middle action bubble containing the default "Glowing Siri-style" Voice button and an optional Chat toggle.
+- **Backend:** FastAPI (Python) orchestrating the workflow.
+- **AI/Reasoning:** Vertex AI (Gemini 2.0 Flash) with **Response Streaming** mapping out edits and chat tokens.
+- **Voice (STT):** Google Cloud Speech-to-Text.
+- **State/Session Management:** Database or persistent file-storage backend (e.g., SQLite/JSON local files for MVP natively tracking Session ID -> Documents & Chat History).
 
 ---
 
-## Phase 1: Foundation, Editor, & Frontend Setup (Hours 1-3)
-**Goal:** Setup the Next.js/Tailwind frontend, the manual editor pane, and the backend.
-- Initialize Next.js frontend with Tailwind CSS.
-- Setup FastAPI backend with CORS and basic `/ping` endpoints.
-- Build the core **Split-view interface** (Chat UI | Raw Editor Pane | Live KaTeX Display).
-- Setup the Google Cloud Project and create service account credentials for local development.
+## 🛠 Model Design & Universal Review System
 
-## Phase 2: Vertex AI Agent & Document Manipulation (Hours 4-7)
-**Goal:** Hook up the agent so that typing commands manipulates the LaTeX string securely via JSON.
-- Integrate the `google-cloud-aiplatform` (Vertex AI SDK) into the FastAPI backend.
-- Define the Pydantic schema for Gemini's **Structured JSON Output** (e.g., `UpdateDocumentResponse`).
-- Implement the baseline agent logic that inputs the user command + full document and outputs the exact JSON modification.
-- Hook up chat interface to dynamically update the text editor pane.
+### 1. Document Modification Lifecycle (Universal Review)
+*Every* change suggested by the AI—whether from an intent command ("Make this a fraction") or a tool call (SymPy)—triggers the Universal Review Flow:
+1. User provides input (Voice or Chat).
+2. Vertex AI identifies the intent and streams the text response / planned edits back to the frontend.
+3. The frontend displays the proposed changes as a **Pending Diff/Suggestion Review** overlaid on the Middle Panel or Right Panel.
+4. The user accepts or rejects the change before it fundamentally modifies the central document state.
 
-## Phase 3: Google Speech-to-Text Integration (Hours 8-11)
-**Goal:** Add high-fidelity STT to drive AI manipulations.
-- Integrate **Google Cloud Speech-to-Text API** (streaming or synchronous depending on requirements).
-- Setup microphone capture in the Next.js app and route audio to the FastAPI backend for transcription via GCP.
-- Develop the "Full Screen Document" Voice Mode with minimalist UI.
-- Pass transcribed output immediately into the Phase 2 Vertex AI pipeline.
+### 2. Response Streaming
+- FastAPI will leverage async generators (`yield`) to stream Vertex AI's text responses and JSON structural modifications on-the-fly.
+- Server-Sent Events (SSE) or WebSockets will deliver the chunks to Next.js for a lightning-fast responsive feel.
 
-## Phase 4: Explicit Tool Calling & Math Solver (Hours 12-16)
-**Goal:** Register function declarations and build the SymPy integration.
-- Build explicit Python tools (e.g., `def run_sympy_solve(...)`) and register them within the Vertex AI Tool Calling framework.
-- Handle multi-turn tool execution logic in FastAPI (Gemini requests tool -> FastAPI runs it -> FastAPI returns result to Gemini).
-- Build the frontend UI diff block for reviewing pending SymPy suggestions.
+### 3. Session & File Persistence
+- Instead of static presets, the app will support **Sessions**.
+- A session encompasses:
+  1. The uploaded assignment PDF.
+  2. The current LaTeX document state.
+  3. The Chat history.
+- Local JSON storage or an SQLite DB is required in the backend to save/load these sessions across page reloads.
 
-## Phase 5: GCP Deployment & Hackathon Polish (Hours 17-20)
-**Goal:** Final feature refinement and deploying the stack.
-- Containerize the FastAPI backend with Docker and deploy to **Google Cloud Run**.
-- Deploy Next.js frontend (Vercel or Google Cloud Run).
-- Refine Framer Motion aesthetic transitions and fix edge-case bugs.
-- Prepare demo dataset and rehearse demo flows.
+---
+
+## Phase 1: Foundation, 3-Panel Layout & Bubble UI (Hours 1-4)
+**Goal:** Setup Next.js, FastAPI, and the full UI shell.
+- Create the 3-Panel Grid layout (PDF Dropzone | LaTeX Editor | KaTeX Preview).
+- Build the **Bottom-Middle Bubble Component**: Focus heavily on Tailwind/Framer Motion to make a glowing Siri-style voice button as the centerpiece, with an expandable/flyout chat interface embedded within the bubble.
+- Scaffold FastAPI, set up SQLite/Local file Session Management (Save/Load document state and PDF blobs).
+
+## Phase 2: Vertex AI Agent, Streaming & Universal Review (Hours 5-9)
+**Goal:** Hook up the agent to stream suggestions and enforce the Code-Review flow for ALL edits.
+- Integrate Vertex AI SDK with streaming capabilities in FastAPI (SSE endpoints).
+- Define the `AgentResponse` streaming schema (streaming chat text alongside JSON diff logic).
+- Wire the frontend so that any AI edit produces a "Review Suggestion" UI block (Accept/Reject) over the editor.
+- Connect the Chat section of the bubble to display streamed conversational responses.
+
+## Phase 3: Google Speech-to-Text & Voice-First Loop (Hours 10-13)
+**Goal:** Bring the Siri-style button to life with STT.
+- Integrate Google Cloud Speech-to-Text. 
+- Map the microphone capture to the glowing Voice button.
+- Route transcribed text instantly into the Phase 2 Agent logic.
+- Ensure the user can simply click, speak, and see the Review UI pop up.
+
+## Phase 4: Explicit Tool Calling & SymPy Math Solver (Hours 14-17)
+**Goal:** Add heavy deterministic math capabilities.
+- Register explicit Python tools (SymPy operations) with Vertex AI.
+- Define multi-turn execution (Gemini -> SymPy -> Gemini -> Streamed Output -> Universal Review).
+- This operates seamlessly inside the existing Phase 2 Review flow.
+
+## Phase 5: PDF Integration & Polish (Hours 18-20)
+**Goal:** Finalize drag-and-drop, state persistence, and aesthetics.
+- Implement the Left Panel PDF Dropzone properly (reading/rendering PDFs natively within the UI).
+- Ensure saving a session serializes the PDF state, LaTeX doc, and chat history.
+- Refine animations.
+
+---
+
+## 🔍 Unimplemented Items Checklist
+_Based on your earlier `detailed_implementation_plan.md` and current codebase:_
+- [ ] Requirements.txt is initiated with GCP dependencies, but we need `python-multipart` (for file uploads/PDFs), and `SQLAlchemy`/`sqlite3` (for Session management).
+- [ ] No database/persistence layer has been built yet.
+- [ ] Frontend currently has NO code; the 3-panel UI and action bubble need to be built entirely from scratch.
+- [ ] SSE / WebSocket streaming infrastructure needs to be bootstrapped in FastAPI.
+- [ ] The "Diff/Review Block" UI for reviewing raw strings needs a library (like `diff-match-patch` or a Monaco Diff Editor integration).
+
+---

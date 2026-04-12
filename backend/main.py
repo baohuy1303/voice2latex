@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from routers import chat, voice
+from routers import chat, voice, session
 
 load_dotenv()
 
@@ -18,6 +18,7 @@ app.add_middleware(
 
 app.include_router(chat.router, prefix="/api")
 app.include_router(voice.router, prefix="/api")
+app.include_router(session.router, prefix="/api")
 
 
 @app.get("/ping")

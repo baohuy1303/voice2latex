@@ -3,20 +3,33 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter
 from schemas.agent_response import ChatRequest, AgentResponse, ActionType
 from services.vertex_ai import call_gemini
+from services.session_store import get_session, save_session
 
 router = APIRouter()
 
 _executor = ThreadPoolExecutor(max_workers=4)
 
-# In-memory conversation history (single-session for hackathon)
+# Fallback in-memory history when no session_id
 _conversation_history: list[dict] = []
 MAX_HISTORY = 10
-GEMINI_TIMEOUT = 30  # seconds
+GEMINI_TIMEOUT = 30
 
 
 @router.post("/chat", response_model=AgentResponse)
 async def chat(request: ChatRequest):
     global _conversation_history
+
+    # Load history from session or fallback to in-memory
+    if request.session_id:
+        session = get_session(request.session_id)
+        history = (session.get("history", []) if session else [])[-MAX_HISTORY:]
+    else:
+        history = _conversation_history[-MAX_HISTORY:]
+
+    # Build user message with optional PDF context
+    user_message = request.message
+    if request.context:
+        user_message = f"Reference material (from uploaded PDF):\n\"\"\"\n{request.context}\n\"\"\"\n\nUser command: {request.message}"
 
     try:
         loop = asyncio.get_event_loop()
@@ -24,9 +37,9 @@ async def chat(request: ChatRequest):
             loop.run_in_executor(
                 _executor,
                 lambda: call_gemini(
-                    user_message=request.message,
+                    user_message=user_message,
                     document=request.document,
-                    history=_conversation_history[-MAX_HISTORY:],
+                    history=history,
                 ),
             ),
             timeout=GEMINI_TIMEOUT,
@@ -39,9 +52,17 @@ async def chat(request: ChatRequest):
             explanation=result.get("explanation"),
         )
 
-        # Append to conversation history
-        _conversation_history.append({"role": "user", "content": request.message})
-        _conversation_history.append({"role": "model", "content": response.reply})
+        # Save history
+        new_entry_user = {"role": "user", "content": request.message}
+        new_entry_model = {"role": "model", "content": response.reply}
+
+        if request.session_id:
+            updated_history = history + [new_entry_user, new_entry_model]
+            doc_to_save = response.new_document if response.action != "no_change" else request.document
+            save_session(request.session_id, doc_to_save, updated_history)
+        else:
+            _conversation_history.append(new_entry_user)
+            _conversation_history.append(new_entry_model)
 
     except asyncio.TimeoutError:
         response = AgentResponse(

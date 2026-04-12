@@ -7,3 +7,4 @@ frontend/.next
 *.env
 __pycache__/
 *.pyc
+backend/sessions/
