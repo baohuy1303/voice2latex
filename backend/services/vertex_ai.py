@@ -182,6 +182,35 @@ def _execute_tool(function_name: str, args: dict) -> dict:
     return result
 
 
+def normalize_pdf_context(raw_context: str) -> str:
+    """Run a fast, focused Gemini call to fix garbled PDF text extraction into clean LaTeX."""
+    client = get_client()
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+    prompt = (
+        "You are a LaTeX transcription specialist. The text below was extracted from a PDF using a text layer parser. "
+        "PDF extraction frequently corrupts math: superscripts become adjacent characters (x2 → x^2), "
+        "subscripts look the same (x1 → x_1), fractions appear as a/b, unicode Greek letters appear raw, "
+        "and spacing around operators is lost.\n\n"
+        "Your job:\n"
+        "- Reconstruct the mathematically correct LaTeX for any math content.\n"
+        "- Leave plain English text unchanged.\n"
+        "- Return ONLY the corrected text — no explanation, no preamble, no markdown fences.\n\n"
+        f"Raw PDF extraction:\n{raw_context}"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=[genai.types.Content(role="user", parts=[genai.types.Part(text=prompt)])],
+            config=GenerateContentConfig(temperature=0.1),
+        )
+        normalized = (response.text or "").strip()
+        return normalized if normalized else raw_context
+    except Exception:
+        return raw_context
+
+
 def call_gemini(
     user_message: str,
     document: str,
@@ -293,6 +322,9 @@ User command: {user_message}
 
 If the user asks to solve, simplify, differentiate, or integrate, use the appropriate math tool. Then produce your final response as JSON with this exact schema:
 {{"action": "replace_all"|"no_change", "new_document": "<full updated document>", "reply": "<short confirmation>", "explanation": "<optional step-by-step>"}}"""
+
+    if images:
+        user_prompt += "\n\nNOTE: Image(s) are attached. Transcribe what is written in the image exactly as LaTeX. Do NOT solve or answer — only extract what is visibly shown, unless the user explicitly asks you to solve or answer."
 
     contents.append(
         genai.types.Content(

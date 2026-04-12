@@ -2,7 +2,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter
 from schemas.agent_response import ChatRequest, AgentResponse, ActionType
-from services.vertex_ai import call_gemini
+from services.vertex_ai import call_gemini, normalize_pdf_context
 from services.session_store import get_session, save_session
 
 router = APIRouter()
@@ -26,10 +26,11 @@ async def chat(request: ChatRequest):
     else:
         history = _conversation_history[-MAX_HISTORY:]
 
-    # Build user message with optional PDF context
+    # Build user message with optional PDF context (normalize garbled math first)
     user_message = request.message
     if request.context:
-        user_message = f"Reference material (from uploaded PDF):\n\"\"\"\n{request.context}\n\"\"\"\n\nUser command: {request.message}"
+        clean_context = normalize_pdf_context(request.context)
+        user_message = f"Reference material (from uploaded PDF):\n\"\"\"\n{clean_context}\n\"\"\"\n\nUser command: {request.message}"
 
     try:
         loop = asyncio.get_event_loop()
