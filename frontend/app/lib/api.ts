@@ -81,11 +81,11 @@ export async function sendChatMessage(
 // --- Streaming Chat ---
 
 export interface StreamEvent {
-  type: "reply" | "explanation" | "document" | "error" | "done";
-  chunk?: string;
+  type: "chunk" | "document" | "error" | "done";
   text?: string;
   action?: string;
   new_document?: string;
+  reply?: string;
   message?: string;
 }
 

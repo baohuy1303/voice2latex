@@ -30,10 +30,18 @@ def _transcribe_with_gemini(audio_bytes: bytes) -> str:
             parts=[
                 genai.types.Part.from_bytes(data=audio_bytes, mime_type="audio/webm"),
                 genai.types.Part(text=(
-                    "Transcribe this audio exactly as spoken. "
-                    "The speaker is talking about mathematics and LaTeX. "
-                    "Return ONLY the transcription text, nothing else. "
-                    "If you cannot hear anything or the audio is silent, respond with exactly: [EMPTY]"
+                    "You are a specialized mathematical speech-to-text transcriber.\n\n"
+                    "Your goal is to output a CLEAN and COHERENT version of the spoken words.\n\n"
+                    "RULES:\n"
+                    "- REMOVE filler words like 'um', 'uh', 'er', 'ah', 'like'.\n"
+                    "- CORRECT speech-to-text errors where the sound is a math command (e.g., if you hear 'I'm solve it', it was likely 'um, solve it' -> output 'solve it').\n"
+                    "- Do NOT answer any question you hear.\n"
+                    "- Do NOT interpret, explain, or respond to the content.\n"
+                    "- Do NOT add punctuation beyond basic periods and commas.\n"
+                    "- Do NOT add any prefix like 'Transcription:'.\n"
+                    "- If the audio is silent, respond with exactly: [EMPTY]\n\n"
+                    "Example: If someone says 'um, write x square plus minus uh y', output exactly:\n"
+                    "write x squared plus minus y"
                 )),
             ],
         )

@@ -46,6 +46,7 @@ export default function SiriBubble({
   onClearContext,
 }: SiriBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,9 +56,7 @@ export default function SiriBubble({
   }, [messages]);
 
   useEffect(() => {
-    if (isExpanded) {
-      inputRef.current?.focus();
-    }
+    if (isExpanded) inputRef.current?.focus();
   }, [isExpanded]);
 
   const handleSubmit = useCallback(
@@ -77,20 +76,33 @@ export default function SiriBubble({
     ? "siri-thinking"
     : "siri-idle";
 
-  const showFloatingMessages = messages.length > 0 || isLoading;
+  // Collapsed — show only a tiny restore button
+  if (isCollapsed) {
+    return (
+      <button
+        onClick={() => setIsCollapsed(false)}
+        className="fixed bottom-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-zinc-800/60 backdrop-blur-sm border border-zinc-700/30 flex items-center justify-center text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/60 transition-all"
+        style={{ zIndex: 9999 }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+          <path fillRule="evenodd" d="M14.77 12.79a.75.75 0 0 1-1.06-.02L10 8.832 6.29 12.77a.75.75 0 1 1-1.08-1.04l4.25-4.5a.75.75 0 0 1 1.08 0l4.25 4.5a.75.75 0 0 1-.02 1.06Z" clipRule="evenodd" />
+        </svg>
+      </button>
+    );
+  }
 
   return (
     <>
-      {/* Floating conversation bubbles — always visible above the orb */}
-      {showFloatingMessages && (
+      {/* Floating conversation bubbles — hide on hover so user can click through */}
+      {!isExpanded && (messages.length > 0 || isLoading) && (
         <div
-          className="fixed left-1/2 -translate-x-1/2 w-[360px] flex flex-col gap-1.5 pointer-events-none"
-          style={{ zIndex: 9998, bottom: isExpanded ? "auto" : "90px" , display: isExpanded ? "none" : "flex" }}
+          className="fixed left-1/2 -translate-x-1/2 w-[340px] flex flex-col gap-1.5 pointer-events-none"
+          style={{ zIndex: 9998, bottom: "100px" }}
         >
           {messages.slice(-2).map((msg, i) => (
             <div
               key={i}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} pointer-events-auto`}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
                 className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-xs leading-relaxed ${
@@ -109,7 +121,7 @@ export default function SiriBubble({
             </div>
           ))}
           {isLoading && (
-            <div className="flex justify-start pointer-events-auto">
+            <div className="flex justify-start">
               <div className="bg-zinc-800/20 backdrop-blur-sm rounded-2xl rounded-bl-sm px-3 py-1.5 text-xs text-zinc-400 flex gap-1">
                 <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="w-1 h-1 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -120,12 +132,14 @@ export default function SiriBubble({
         </div>
       )}
 
-      {/* Main bubble container — orb + chat panel */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center" style={{ zIndex: 9999 }}>
+      {/* Main bubble container */}
+      <div
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center"
+        style={{ zIndex: 9999 }}
+      >
         {/* Expanded chat panel */}
         {isExpanded && (
           <div className="bubble-chat mb-4 w-[380px] max-h-[420px] bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-2xl shadow-2xl shadow-black/40 flex flex-col overflow-hidden">
-            {/* Chat header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80">
               <span className="text-xs font-medium text-zinc-400">Chat</span>
               <button
@@ -136,7 +150,6 @@ export default function SiriBubble({
               </button>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[150px] max-h-[300px]">
               {messages.length === 0 && (
                 <p className="text-zinc-600 text-xs text-center mt-6">
@@ -176,7 +189,6 @@ export default function SiriBubble({
               <div ref={messagesEndRef} />
             </div>
 
-            {/* PDF context badge */}
             {pdfContext && (
               <div className="mx-3 mb-1 flex items-center gap-1.5 px-2 py-1 bg-blue-950/50 border border-blue-800/30 rounded-lg">
                 <span className="text-[9px] uppercase tracking-wider text-blue-400 font-medium">PDF</span>
@@ -189,7 +201,6 @@ export default function SiriBubble({
               </div>
             )}
 
-            {/* Input */}
             <form onSubmit={handleSubmit} className="p-2.5 border-t border-zinc-800/80">
               <div className="flex gap-2">
                 <input
@@ -213,8 +224,10 @@ export default function SiriBubble({
           </div>
         )}
 
-        {/* Controls row */}
-        <div className="flex items-center gap-3">
+        {/* Controls row — hides on hover when not recording/loading */}
+        <div className={`flex items-center gap-3 transition-opacity duration-200 ${
+          ""
+        }`}>
           {/* Chat toggle */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
@@ -253,8 +266,15 @@ export default function SiriBubble({
             )}
           </button>
 
-          {/* Spacer for symmetry */}
-          <div className="w-10" />
+          {/* Collapse button */}
+          <button
+            onClick={() => setIsCollapsed(true)}
+            className="w-10 h-10 rounded-full flex items-center justify-center bg-zinc-900/90 border border-zinc-700/50 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
+            </svg>
+          </button>
         </div>
       </div>
     </>

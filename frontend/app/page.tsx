@@ -6,6 +6,7 @@ import EditorPanel from "./components/EditorPanel";
 import LatexPreview from "./components/LatexPreview";
 import SiriBubble from "./components/SiriBubble";
 import {
+  sendChatMessage,
   transcribeAudio,
   createSession,
   getSession,
@@ -13,7 +14,6 @@ import {
   uploadPdf,
 } from "./lib/api";
 import useMicrophone from "./hooks/useMicrophone";
-import useStreamingChat from "./hooks/useStreamingChat";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -24,28 +24,19 @@ export default function Home() {
   const [document, setDocument] = useState("");
   const [documentHistory, setDocumentHistory] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Array<{ id: string; updated_at: string }>>([]);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfContext, setPdfContext] = useState<string | null>(null);
-  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+  const [pendingDocument, setPendingDocument] = useState<string | null>(null);
   const { isRecording, startRecording, stopRecording } = useMicrophone();
-  const {
-    isStreaming,
-    streamedReply,
-    pendingDocument,
-    sendMessage: streamSend,
-    clearPending,
-  } = useStreamingChat();
-
-  const isLoading = isStreaming || isVoiceProcessing;
 
   const refreshSessions = useCallback(async () => {
     const list = await listSessions();
     setSessions(list);
   }, []);
 
-  // Initialize session on mount
   useEffect(() => {
     async function init() {
       const savedId = localStorage.getItem("voice2latex_session");
@@ -74,18 +65,6 @@ export default function Home() {
     init();
   }, [refreshSessions]);
 
-  // When streaming finishes and we have a reply, add it to messages
-  useEffect(() => {
-    if (!isStreaming && streamedReply) {
-      setMessages((prev) => {
-        // Avoid duplicate — check if the last message is already this reply
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant" && last.content === streamedReply) return prev;
-        return [...prev, { role: "assistant", content: streamedReply }];
-      });
-    }
-  }, [isStreaming, streamedReply]);
-
   const handleNewSession = useCallback(async () => {
     const state = await createSession();
     setSessionId(state.id);
@@ -94,6 +73,7 @@ export default function Home() {
     setDocumentHistory([]);
     setPdfFile(null);
     setPdfContext(null);
+    setPendingDocument(null);
     localStorage.setItem("voice2latex_session", state.id);
     await refreshSessions();
   }, [refreshSessions]);
@@ -112,6 +92,7 @@ export default function Home() {
       setDocumentHistory([]);
       setPdfFile(null);
       setPdfContext(null);
+      setPendingDocument(null);
       localStorage.setItem("voice2latex_session", state.id);
     } catch {
       // Session not found
@@ -123,6 +104,7 @@ export default function Home() {
     setMessages([]);
     setDocumentHistory([]);
     setPdfContext(null);
+    setPendingDocument(null);
   }, []);
 
   const pushHistory = useCallback((doc: string) => {
@@ -138,68 +120,79 @@ export default function Home() {
     });
   }, []);
 
-  // Streaming chat send
   const handleSend = useCallback(
     async (message: string) => {
       if (!message.trim() || isLoading) return;
 
       setMessages((prev) => [...prev, { role: "user", content: message }]);
+      setIsLoading(true);
 
-      await streamSend(
-        message,
-        document,
-        sessionId || undefined,
-        pdfContext || undefined
-      );
+      try {
+        const res = await sendChatMessage(
+          message,
+          document,
+          sessionId || undefined,
+          pdfContext || undefined
+        );
 
-      setPdfContext(null);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: res.reply },
+        ]);
+
+        if (res.action !== "no_change" && res.new_document !== document) {
+          setPendingDocument(res.new_document);
+        }
+
+        setPdfContext(null);
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "Error: Could not reach the server." },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [document, sessionId, pdfContext, isLoading, streamSend]
+    [document, sessionId, pdfContext, isLoading]
   );
 
-  // Accept diff — apply the proposed document
   const handleAcceptDiff = useCallback(() => {
     if (!pendingDocument) return;
-    if (pendingDocument.action !== "no_change" && pendingDocument.new_document !== document) {
-      pushHistory(document);
-      setDocument(pendingDocument.new_document);
-    }
-    clearPending();
-  }, [pendingDocument, document, pushHistory, clearPending]);
+    pushHistory(document);
+    setDocument(pendingDocument);
+    setPendingDocument(null);
+  }, [pendingDocument, document, pushHistory]);
 
-  // Reject diff — discard proposed changes
   const handleRejectDiff = useCallback(() => {
-    clearPending();
-  }, [clearPending]);
+    setPendingDocument(null);
+  }, []);
 
-  // Voice: transcribe with Gemini, then feed into streaming chat
   const handleMicToggle = useCallback(async () => {
     if (isRecording) {
       const blob = await stopRecording();
-      if (!blob || blob.size < 1000) return; // Skip empty recordings
+      if (!blob || blob.size < 1000) return;
 
-      setIsVoiceProcessing(true);
+      setIsLoading(true);
       try {
         const transcript = await transcribeAudio(blob);
         if (!transcript) {
-          setIsVoiceProcessing(false);
-          return; // Silent — do nothing
+          setIsLoading(false);
+          return;
         }
-
-        setIsVoiceProcessing(false);
-        // Feed transcript into streaming chat
+        setIsLoading(false);
         await handleSend(transcript);
       } catch {
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: "Error: Could not process voice." },
         ]);
-        setIsVoiceProcessing(false);
+        setIsLoading(false);
       }
     } else {
       await startRecording();
     }
-  }, [isRecording, stopRecording, startRecording, document, sessionId, pdfContext, pushHistory]);
+  }, [isRecording, stopRecording, startRecording, handleSend]);
 
   const handlePdfUpload = useCallback(
     async (file: File) => {
@@ -210,11 +203,6 @@ export default function Home() {
     },
     [sessionId]
   );
-
-  // Show streaming reply or pending document in bubble
-  const displayMessages = isStreaming && streamedReply
-    ? [...messages, { role: "assistant" as const, content: streamedReply }]
-    : messages;
 
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100">
@@ -292,7 +280,7 @@ export default function Home() {
               pushHistory(document);
               setDocument(val);
             }}
-            proposedValue={pendingDocument?.action !== "no_change" ? pendingDocument?.new_document : null}
+            proposedValue={pendingDocument}
             onAccept={handleAcceptDiff}
             onReject={handleRejectDiff}
             className="flex-1"
@@ -305,7 +293,7 @@ export default function Home() {
             Preview
           </div>
           <LatexPreview
-            latex={pendingDocument?.action !== "no_change" ? (pendingDocument?.new_document || document) : document}
+            latex={pendingDocument || document}
             className="flex-1 bg-zinc-900/40 overflow-auto latex-preview"
           />
         </div>
@@ -313,7 +301,7 @@ export default function Home() {
 
       {/* Floating Siri Bubble */}
       <SiriBubble
-        messages={displayMessages}
+        messages={messages}
         isLoading={isLoading}
         isRecording={isRecording}
         onMicToggle={handleMicToggle}

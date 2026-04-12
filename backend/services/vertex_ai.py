@@ -351,43 +351,92 @@ def call_gemini_stream(
     history: list[dict] | None = None,
     context: str | None = None,
 ):
-    """Streaming version of call_gemini. Yields dicts for SSE events.
+    """True streaming: streams raw Gemini text chunks, then parses JSON at the end.
 
-    Strategy:
-    1. First pass: non-streaming call with tools to handle any tool calls
-    2. Once we have the final text, stream the reply portion
-    3. Send the document update at the end
-
-    We can't truly stream tool-calling turns, so we do tool calls synchronously
-    then yield the final result in chunks.
+    Yields SSE events:
+    - {"type": "chunk", "text": "..."} — raw streamed text
+    - {"type": "document", "action": "...", "new_document": "..."} — parsed result
+    - {"type": "done"}
     """
-    # Use the non-streaming call_gemini for the actual work (handles tools)
+    import time
+
+    client = get_client()
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+    contents = []
+
+    if history:
+        for msg in history:
+            contents.append(
+                genai.types.Content(
+                    role=msg["role"],
+                    parts=[genai.types.Part(text=msg["content"])],
+                )
+            )
+
     user_msg = user_message
     if context:
         user_msg = f"Reference material (from uploaded PDF):\n\"\"\"\n{context}\n\"\"\"\n\nUser command: {user_message}"
 
-    result = call_gemini(user_msg, document, history)
+    user_prompt = f"""Current document:
+```latex
+{document}
+```
 
-    # Stream the reply text in chunks
-    reply = result.get("reply", "")
-    words = reply.split(" ")
-    chunk = ""
-    for i, word in enumerate(words):
-        chunk += (" " if chunk else "") + word
-        if len(chunk) >= 15 or i == len(words) - 1:
-            yield {"type": "reply", "chunk": chunk}
-            chunk = ""
+User command: {user_msg}
 
-    # Send explanation if present
-    explanation = result.get("explanation")
-    if explanation:
-        yield {"type": "explanation", "text": explanation}
+Respond with JSON: {{"action": "replace_all"|"no_change", "new_document": "<full updated document>", "reply": "<short confirmation>"}}"""
 
-    # Send the document update
+    contents.append(
+        genai.types.Content(
+            role="user",
+            parts=[genai.types.Part(text=user_prompt)],
+        )
+    )
+
+    config = GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        temperature=0.2,
+    )
+
+    # Stream the response
+    full_text = ""
+    try:
+        for chunk in client.models.generate_content_stream(
+            model=model,
+            contents=contents,
+            config=config,
+        ):
+            if chunk.text:
+                full_text += chunk.text
+                yield {"type": "chunk", "text": chunk.text}
+    except Exception as e:
+        yield {"type": "error", "message": str(e)[:200]}
+        yield {"type": "done"}
+        return
+
+    # Parse the accumulated JSON
+    try:
+        result = json.loads(full_text)
+    except json.JSONDecodeError:
+        json_match = re.search(r'\{[\s\S]*\}', full_text)
+        if json_match:
+            try:
+                result = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                result = {"action": "no_change", "new_document": document, "reply": full_text[:300]}
+        else:
+            result = {"action": "no_change", "new_document": document, "reply": full_text[:300] or "No response"}
+
+    # Sanitize
+    if "new_document" in result:
+        result["new_document"] = sanitize_latex(result["new_document"])
+
     yield {
         "type": "document",
         "action": result.get("action", "no_change"),
         "new_document": result.get("new_document", document),
+        "reply": result.get("reply", ""),
     }
 
     yield {"type": "done"}
