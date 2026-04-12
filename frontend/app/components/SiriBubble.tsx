@@ -19,7 +19,6 @@ interface SiriBubbleProps {
   pdfContext: string | null;
   onClearContext: () => void;
   voicePhase?: "idle" | "transcribing" | "thinking";
-  revealingTranscript?: string | null;
 }
 
 // Configure marked for inline use (no wrapping <p> for single lines)
@@ -61,7 +60,6 @@ export default function SiriBubble({
   pdfContext,
   onClearContext,
   voicePhase = "idle",
-  revealingTranscript,
 }: SiriBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -121,25 +119,6 @@ export default function SiriBubble({
     : isLoading
     ? "siri-thinking"
     : "siri-idle";
-
-  // Word-by-word transcript reveal
-  const [displayedWords, setDisplayedWords] = useState(0);
-  useEffect(() => {
-    if (!revealingTranscript) { setDisplayedWords(0); return; }
-    const words = revealingTranscript.split(/\s+/);
-    setDisplayedWords(0);
-    const interval = setInterval(() => {
-      setDisplayedWords((prev) => {
-        if (prev >= words.length) { clearInterval(interval); return prev; }
-        return prev + 1;
-      });
-    }, 50);
-    return () => clearInterval(interval);
-  }, [revealingTranscript]);
-
-  const revealedText = revealingTranscript
-    ? revealingTranscript.split(/\s+/).slice(0, displayedWords).join(" ")
-    : null;
 
   if (isCollapsed) {
     return (
@@ -322,22 +301,6 @@ export default function SiriBubble({
                   </button>
                 </div>
               </form>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Transcript reveal bubble */}
-        <AnimatePresence>
-          {revealedText && (
-            <motion.div
-              initial={{ opacity: 0, y: 8, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.95 }}
-              transition={{ type: "spring", damping: 20, stiffness: 300 }}
-              className="mb-3 max-w-[340px] bg-blue-600/20 backdrop-blur-sm text-blue-200 rounded-2xl px-3 py-1.5 text-xs leading-relaxed"
-            >
-              {revealedText}
-              <motion.span animate={{ opacity: [1, 0] }} transition={{ repeat: Infinity, duration: 0.6 }} className="inline-block ml-0.5 w-0.5 h-3 bg-blue-300/60 align-middle" />
             </motion.div>
           )}
         </AnimatePresence>

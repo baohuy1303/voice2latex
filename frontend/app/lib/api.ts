@@ -65,6 +65,17 @@ export function getPdfUrl(sessionId: string): string {
   return `${API_BASE}/session/${sessionId}/pdf`;
 }
 
+export async function fetchSessionPdf(sessionId: string): Promise<File | null> {
+  try {
+    const res = await fetch(`${API_BASE}/session/${sessionId}/pdf`);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new File([blob], "document.pdf", { type: "application/pdf" });
+  } catch {
+    return null;
+  }
+}
+
 // --- Chat ---
 
 export async function sendChatMessage(

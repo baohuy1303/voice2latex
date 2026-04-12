@@ -17,6 +17,7 @@ import {
   uploadPdf,
   deleteSession,
   compileToPdf,
+  fetchSessionPdf,
 } from "./lib/api";
 import useMicrophone from "./hooks/useMicrophone";
 
@@ -46,7 +47,6 @@ export default function Home() {
   const [compiledPdfFile, setCompiledPdfFile] = useState<File | null>(null);
   const [previewTab, setPreviewTab] = useState<"katex" | "pdf">("katex");
   const [voicePhase, setVoicePhase] = useState<"idle" | "transcribing" | "thinking">("idle");
-  const [revealingTranscript, setRevealingTranscript] = useState<string | null>(null);
   const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false);
   const sessionDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -178,6 +178,8 @@ export default function Home() {
               content: h.content,
             }))
           );
+          const pdf = await fetchSessionPdf(state.id);
+          if (pdf) setPdfFile(pdf);
           await refreshSessions();
           return;
         } catch { /* create new */ }
@@ -215,9 +217,10 @@ export default function Home() {
         }))
       );
       setDocumentHistory([]);
-      setPdfFile(null);
       setContextSnippets([]);
       setPendingDocument(null);
+      const pdf = await fetchSessionPdf(state.id);
+      setPdfFile(pdf);
       localStorage.setItem("voice2latex_session", state.id);
     } catch { /* not found */ }
   }, []);
@@ -318,14 +321,11 @@ export default function Home() {
       try {
         const transcript = await transcribeAudio(blob);
         if (!transcript) { setVoicePhase("idle"); setIsLoading(false); return; }
-        setRevealingTranscript(transcript);
         setVoicePhase("thinking");
         await handleSend(transcript);
-        setRevealingTranscript(null);
         setVoicePhase("idle");
       } catch {
         setMessages((prev) => [...prev, { role: "assistant", content: "Error: Could not process voice." }]);
-        setRevealingTranscript(null);
         setVoicePhase("idle");
         setIsLoading(false);
       }
@@ -659,7 +659,6 @@ export default function Home() {
         pdfContext={contextSnippets.length > 0 ? `${contextSnippets.length} context(s) attached` : null}
         onClearContext={clearAllContext}
         voicePhase={voicePhase}
-        revealingTranscript={revealingTranscript}
       />
     </div>
   );

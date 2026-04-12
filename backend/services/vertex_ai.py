@@ -358,41 +358,38 @@ If the user asks to solve, simplify, differentiate, or integrate, use the approp
         config=config_with_tools,
     )
 
-    # Tool calling loop
+    # Tool calling loop — must respond to ALL function calls in a turn (Gemini requirement)
     for _ in range(MAX_TOOL_ITERATIONS):
-        # Check if response has a function call
         candidate = response.candidates[0]
         parts = candidate.content.parts
 
-        function_call = None
-        for part in parts:
-            if part.function_call:
-                function_call = part.function_call
-                break
+        # Collect every function call in this response turn
+        function_calls = [p.function_call for p in parts if p.function_call]
 
-        if not function_call:
-            break  # No tool call — Gemini produced a final response
+        if not function_calls:
+            break  # No tool calls — Gemini produced a final text response
 
-        # Execute the tool
-        tool_name = function_call.name
-        tool_args = dict(function_call.args) if function_call.args else {}
-        print(f"Tool call: {tool_name}({tool_args})")
-
-        tool_result = _execute_tool(tool_name, tool_args)
-        print(f"Tool result: {tool_result}")
-
-        # Send tool result back to Gemini
-        contents.append(candidate.content)
-        contents.append(
-            genai.types.Content(
-                role="user",
-                parts=[genai.types.Part(
+        # Execute all tool calls and build one response part per call
+        response_parts = []
+        for fc in function_calls:
+            tool_name = fc.name
+            tool_args = dict(fc.args) if fc.args else {}
+            print(f"Tool call: {tool_name}({tool_args})")
+            tool_result = _execute_tool(tool_name, tool_args)
+            print(f"Tool result: {tool_result}")
+            response_parts.append(
+                genai.types.Part(
                     function_response=genai.types.FunctionResponse(
                         name=tool_name,
                         response=tool_result,
                     )
-                )],
+                )
             )
+
+        # Append the model turn then ALL function responses in a single user turn
+        contents.append(candidate.content)
+        contents.append(
+            genai.types.Content(role="user", parts=response_parts)
         )
 
         response = client.models.generate_content(
