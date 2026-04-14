@@ -2,6 +2,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter
 from schemas.agent_response import ChatRequest, AgentResponse, ActionType
+from services.google_auth import GoogleAuthConfigurationError
 from services.vertex_ai import call_gemini, normalize_pdf_context
 from services.session_store import get_session, save_session
 
@@ -19,20 +20,20 @@ GEMINI_TIMEOUT = 90
 async def chat(request: ChatRequest):
     global _conversation_history
 
-    # Load history from session or fallback to in-memory
-    if request.session_id:
-        session = get_session(request.session_id)
-        history = (session.get("history", []) if session else [])[-MAX_HISTORY:]
-    else:
-        history = _conversation_history[-MAX_HISTORY:]
-
-    # Build user message with optional PDF context (normalize garbled math first)
-    user_message = request.message
-    if request.context:
-        clean_context = normalize_pdf_context(request.context)
-        user_message = f"Reference material (from uploaded PDF):\n\"\"\"\n{clean_context}\n\"\"\"\n\nUser command: {request.message}"
-
     try:
+        # Load history from session or fallback to in-memory
+        if request.session_id:
+            session = get_session(request.session_id)
+            history = (session.get("history", []) if session else [])[-MAX_HISTORY:]
+        else:
+            history = _conversation_history[-MAX_HISTORY:]
+
+        # Build user message with optional PDF context (normalize garbled math first)
+        user_message = request.message
+        if request.context:
+            clean_context = normalize_pdf_context(request.context)
+            user_message = f"Reference material (from uploaded PDF):\n\"\"\"\n{clean_context}\n\"\"\"\n\nUser command: {request.message}"
+
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(
@@ -72,6 +73,13 @@ async def chat(request: ChatRequest):
             action=ActionType.no_change,
             new_document=request.document,
             reply="Request timed out. Please try a simpler command.",
+        )
+    except GoogleAuthConfigurationError as e:
+        print(f"Google auth configuration error: {e}")
+        response = AgentResponse(
+            action=ActionType.no_change,
+            new_document=request.document,
+            reply=str(e),
         )
     except Exception as e:
         print(f"Gemini error: {e}")

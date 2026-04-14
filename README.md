@@ -47,7 +47,9 @@ Before running locally, make sure you have:
 - Node.js 20+ and npm
 - Python 3.11+
 - A Google Cloud Project (Vertex AI and Speech API enabled)
-- A valid Google Service Account JSON key
+- Google Cloud credentials for local development, using either:
+  - Application Default Credentials via `gcloud auth application-default login`
+  - `GOOGLE_APPLICATION_CREDENTIALS` pointing to a service account JSON key
 
 ## Local Setup
 
@@ -80,11 +82,24 @@ GEMINI_MODEL=gemini-2.5-flash
 GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\your-service-account.json
 ```
 
+Google Cloud authentication notes:
+- `gcloud auth login` is not enough for this app by itself.
+- For local development, the simplest setup is:
+```cmd
+gcloud auth application-default login
+```
+- If you prefer a service account key locally, set `GOOGLE_APPLICATION_CREDENTIALS` to the JSON file path instead.
+- Do not commit service account JSON files or real credential paths.
+- ADC is checked in the standard order: `GOOGLE_APPLICATION_CREDENTIALS`, local ADC from `gcloud auth application-default login`, then an attached service account in Google Cloud environments.
+
 Start the API:
 ```cmd
 python -m uvicorn main:app --reload --port 8000
 ```
 *You can verify the backend is running by visiting `http://127.0.0.1:8000/ping`*
+
+If Google Cloud auth is missing, the app will now return a clearer message:
+`Google Cloud credentials are not configured. Run gcloud auth application-default login for local development or set GOOGLE_APPLICATION_CREDENTIALS.`
 
 ### 2. Frontend Setup
 

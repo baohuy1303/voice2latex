@@ -2,6 +2,7 @@ import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from schemas.agent_response import ChatRequest
+from services.google_auth import GoogleAuthConfigurationError
 from services.vertex_ai import call_gemini_stream
 from services.session_store import get_session, save_session
 
@@ -41,6 +42,10 @@ async def chat_stream(request: ChatRequest):
 
                 yield f"event: {event_type}\ndata: {json.dumps(event)}\n\n"
 
+        except GoogleAuthConfigurationError as e:
+            yield f"event: error\ndata: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'type': 'done'})}\n\n"
+            return
         except Exception as e:
             yield f"event: error\ndata: {json.dumps({'type': 'error', 'message': str(e)[:200]})}\n\n"
             yield f"event: done\ndata: {json.dumps({'type': 'done'})}\n\n"

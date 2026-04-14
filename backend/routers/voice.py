@@ -5,6 +5,7 @@ from fastapi import APIRouter, UploadFile, File
 from pydantic import BaseModel
 from google import genai
 from google.genai.types import GenerateContentConfig
+from services.google_auth import GoogleAuthConfigurationError, GOOGLE_AUTH_SETUP_MESSAGE
 
 router = APIRouter()
 
@@ -79,6 +80,9 @@ async def transcribe(file: UploadFile = File(...)):
             timeout=GEMINI_TIMEOUT,
         )
         return TranscribeResponse(transcript=transcript)
+    except GoogleAuthConfigurationError as e:
+        print(f"Google auth configuration error: {e}")
+        return TranscribeResponse(transcript=GOOGLE_AUTH_SETUP_MESSAGE)
     except Exception as e:
         print(f"Transcription error: {e}")
         return TranscribeResponse(transcript="")

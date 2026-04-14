@@ -13,11 +13,13 @@ import {
   transcribeAudio,
   createSession,
   getSession,
+  saveSession,
   listSessions,
   uploadPdf,
   deleteSession,
   compileToPdf,
   fetchSessionPdf,
+  SessionState,
 } from "./lib/api";
 import useMicrophone from "./hooks/useMicrophone";
 
@@ -26,7 +28,10 @@ interface ChatMessage {
   content: string;
 }
 
+type SaveStatus = "saved" | "saving" | "unsaved" | "error";
+
 let snippetCounter = 0;
+const AUTOSAVE_DELAY_MS = 1000;
 
 export default function Home() {
   const [document, setDocument] = useState("");
@@ -48,7 +53,13 @@ export default function Home() {
   const [previewTab, setPreviewTab] = useState<"katex" | "pdf">("katex");
   const [voicePhase, setVoicePhase] = useState<"idle" | "transcribing" | "thinking">("idle");
   const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const sessionDropdownRef = useRef<HTMLDivElement>(null);
+  const autosaveTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const isHydratingSessionRef = useRef(false);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const latestSnapshotRef = useRef<string>("");
+  const saveRequestIdRef = useRef(0);
 
   // Panel widths as percentages
   const [panelWidths, setPanelWidths] = useState([25, 40, 35]);
@@ -150,6 +161,73 @@ export default function Home() {
     setContextSnippets([]);
   }, []);
 
+  const serializeHistory = useCallback(
+    (history: ChatMessage[]) =>
+      history.map((message) => ({
+        role: message.role === "assistant" ? "model" : "user",
+        content: message.content,
+      })),
+    []
+  );
+
+  const buildSessionSnapshot = useCallback(
+    (doc: string, history: ChatMessage[]) =>
+      JSON.stringify({
+        document: doc,
+        history: serializeHistory(history),
+      }),
+    [serializeHistory]
+  );
+
+  const normalizeSessionMessages = useCallback(
+    (history: Array<{ role: string; content: string }> = []) =>
+      history.map((entry) => ({
+        role: entry.role === "model" ? ("assistant" as const) : ("user" as const),
+        content: entry.content,
+      })),
+    []
+  );
+
+  const clearAutosaveTimeout = useCallback(() => {
+    if (autosaveTimeoutRef.current) {
+      window.clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+  }, []);
+
+  const hydrateSessionState = useCallback(
+    (state: SessionState) => {
+      const nextMessages = normalizeSessionMessages(state.history || []);
+      const snapshot = buildSessionSnapshot(state.document, nextMessages);
+
+      isHydratingSessionRef.current = true;
+      saveRequestIdRef.current += 1;
+      clearAutosaveTimeout();
+      lastSavedSnapshotRef.current = snapshot;
+      latestSnapshotRef.current = snapshot;
+      setSaveStatus("saved");
+
+      setSessionId(state.id);
+      setDocument(state.document);
+      setMessages(nextMessages);
+      setDocumentHistory([]);
+      setContextSnippets([]);
+      setPendingDocument(null);
+    },
+    [buildSessionSnapshot, clearAutosaveTimeout, normalizeSessionMessages]
+  );
+
+  useEffect(() => {
+    latestSnapshotRef.current = buildSessionSnapshot(document, messages);
+  }, [document, messages, buildSessionSnapshot]);
+
+  useEffect(() => {
+    if (!isHydratingSessionRef.current) return;
+    if (latestSnapshotRef.current === lastSavedSnapshotRef.current) {
+      isHydratingSessionRef.current = false;
+    }
+  }, [document, messages, sessionId]);
+
   // Build context string from all snippets
   const getContextString = useCallback(() => {
     if (contextSnippets.length === 0) return undefined;
@@ -170,14 +248,7 @@ export default function Home() {
       if (savedId) {
         try {
           const state = await getSession(savedId);
-          setSessionId(state.id);
-          setDocument(state.document);
-          setMessages(
-            (state.history || []).map((h: { role: string; content: string }) => ({
-              role: h.role === "model" ? "assistant" as const : "user" as const,
-              content: h.content,
-            }))
-          );
+          hydrateSessionState(state);
           const pdf = await fetchSessionPdf(state.id);
           if (pdf) setPdfFile(pdf);
           await refreshSessions();
@@ -185,45 +256,71 @@ export default function Home() {
         } catch { /* create new */ }
       }
       const state = await createSession();
-      setSessionId(state.id);
+      hydrateSessionState(state);
       localStorage.setItem("stemflow_session", state.id);
       await refreshSessions();
     }
     init();
-  }, [refreshSessions]);
+
+    return () => {
+      clearAutosaveTimeout();
+    };
+  }, [clearAutosaveTimeout, hydrateSessionState, refreshSessions]);
+
+  useEffect(() => {
+    if (!sessionId || isHydratingSessionRef.current) return;
+
+    const snapshot = buildSessionSnapshot(document, messages);
+    if (snapshot === lastSavedSnapshotRef.current) {
+      setSaveStatus((prev) => (prev === "saving" ? prev : "saved"));
+      clearAutosaveTimeout();
+      return;
+    }
+
+    setSaveStatus("unsaved");
+    clearAutosaveTimeout();
+
+    autosaveTimeoutRef.current = window.setTimeout(async () => {
+      const requestId = saveRequestIdRef.current + 1;
+      saveRequestIdRef.current = requestId;
+      setSaveStatus("saving");
+
+      try {
+        await saveSession(sessionId, document, serializeHistory(messages));
+        lastSavedSnapshotRef.current = snapshot;
+
+        if (saveRequestIdRef.current !== requestId) return;
+        setSaveStatus(latestSnapshotRef.current === snapshot ? "saved" : "unsaved");
+      } catch (error) {
+        console.error("Autosave failed:", error);
+        if (saveRequestIdRef.current === requestId) {
+          setSaveStatus("error");
+        }
+      }
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => {
+      clearAutosaveTimeout();
+    };
+  }, [sessionId, document, messages, buildSessionSnapshot, clearAutosaveTimeout, serializeHistory]);
 
   const handleNewSession = useCallback(async () => {
     const state = await createSession();
-    setSessionId(state.id);
-    setDocument("");
-    setMessages([]);
-    setDocumentHistory([]);
+    hydrateSessionState(state);
     setPdfFile(null);
-    setContextSnippets([]);
-    setPendingDocument(null);
     localStorage.setItem("stemflow_session", state.id);
     await refreshSessions();
-  }, [refreshSessions]);
+  }, [hydrateSessionState, refreshSessions]);
 
   const handleLoadSession = useCallback(async (id: string) => {
     try {
       const state = await getSession(id);
-      setSessionId(state.id);
-      setDocument(state.document);
-      setMessages(
-        (state.history || []).map((h: { role: string; content: string }) => ({
-          role: h.role === "model" ? "assistant" as const : "user" as const,
-          content: h.content,
-        }))
-      );
-      setDocumentHistory([]);
-      setContextSnippets([]);
-      setPendingDocument(null);
+      hydrateSessionState(state);
       const pdf = await fetchSessionPdf(state.id);
       setPdfFile(pdf);
       localStorage.setItem("stemflow_session", state.id);
     } catch { /* not found */ }
-  }, []);
+  }, [hydrateSessionState]);
 
   const handleClearSession = useCallback(() => {
     setDocument("");
@@ -239,13 +336,18 @@ export default function Home() {
     try {
       await deleteSession(id);
       if (sessionId === id) {
+        saveRequestIdRef.current += 1;
+        clearAutosaveTimeout();
+        lastSavedSnapshotRef.current = null;
+        latestSnapshotRef.current = buildSessionSnapshot("", []);
+        setSaveStatus("saved");
         handleClearSession();
         setSessionId(null);
         localStorage.removeItem("stemflow_session");
       }
       await refreshSessions();
     } catch { /* error */ }
-  }, [sessionId, handleClearSession, refreshSessions]);
+  }, [buildSessionSnapshot, clearAutosaveTimeout, sessionId, handleClearSession, refreshSessions]);
 
   const pushHistory = useCallback((doc: string) => {
     setDocumentHistory((prev) => [...prev.slice(-49), doc]);
@@ -477,8 +579,28 @@ export default function Home() {
             </AnimatePresence>
           </div>
 
-          {/* Divider */}
-          <div className="w-px h-5 bg-zinc-800/80 mx-0.5" />
+        {/* Divider */}
+        <div className="w-px h-5 bg-zinc-800/80 mx-0.5" />
+
+        <span
+          className={`px-2 py-1 text-[11px] rounded-md border ${
+            saveStatus === "error"
+              ? "text-red-400 border-red-900/50 bg-red-950/20"
+              : saveStatus === "saving"
+                ? "text-indigo-300 border-indigo-900/40 bg-indigo-950/20"
+                : saveStatus === "unsaved"
+                  ? "text-amber-300 border-amber-900/40 bg-amber-950/20"
+                  : "text-zinc-500 border-zinc-800/80 bg-zinc-900"
+          }`}
+        >
+          {saveStatus === "saving"
+            ? "Saving..."
+            : saveStatus === "unsaved"
+              ? "Unsaved changes"
+              : saveStatus === "error"
+                ? "Save failed"
+                : "Saved"}
+        </span>
 
           <button onClick={handleClearSession} className="px-2.5 py-1.5 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 transition-colors border border-zinc-800/80 text-zinc-500 hover:text-zinc-300">
             Clear

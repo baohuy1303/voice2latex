@@ -34,11 +34,12 @@ export async function saveSession(
   document: string,
   history: Array<{ role: string; content: string }>
 ): Promise<void> {
-  await fetch(`${API_BASE}/session/${id}`, {
+  const res = await fetch(`${API_BASE}/session/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ document, history }),
   });
+  if (!res.ok) throw new Error(`Failed to save session: ${res.status}`);
 }
 
 export async function listSessions(): Promise<Array<{ id: string; updated_at: string }>> {

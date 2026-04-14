@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from google import genai
 from google.genai.types import GenerateContentConfig, Tool, FunctionDeclaration
+from services.google_auth import load_google_auth
 from services.latex_sanitizer import sanitize_latex
 from services.sympy_solver import TOOL_FUNCTIONS
 
@@ -141,10 +142,13 @@ MAX_TOOL_ITERATIONS = 3
 def get_client() -> genai.Client:
     global _client
     if _client is None:
+        credentials, discovered_project = load_google_auth()
+
         _client = genai.Client(
             vertexai=True,
-            project=os.getenv("GCP_PROJECT_ID", "washu-devfest"),
+            project=os.getenv("GCP_PROJECT_ID") or discovered_project or "washu-devfest",
             location=os.getenv("GCP_LOCATION", "us-central1"),
+            credentials=credentials,
         )
     return _client
 
