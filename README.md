@@ -1,121 +1,353 @@
 # StemFlow
 
-## Inspiration
-Students in STEM do not just struggle with solving problems, they struggle with submitting them. They work in PDFs or on paper, then waste time translating everything into LaTeX or code. For professors and researchers, it is the reverse: turning rough STEM work into clean, structured documents.
+StemFlow is a local-first STEM writing workspace for turning rough math, voice notes, and PDF snippets into editable LaTeX. The app combines a Next.js frontend with a FastAPI backend, Gemini on Vertex AI for AI-assisted editing, filesystem-backed sessions, and PDF compilation through LaTeXLite.
 
-## What it does
-StemFlow is a STEM workspace that combines voice transcription, PDF context extraction, AI-powered reasoning, and LaTeX editing into one seamless flow. It acts as an agentic workspace engineered for how STEM work actually happens, reducing the friction between analytical thought and structured digital documentation.
+## What StemFlow Does
 
-## How we built it
-StemFlow features a Next.js (TypeScript) frontend coupled with a FastAPI backend. We utilized Google Gemini (Vertex AI) to power the core agentic reasoning loops. A multi-modal architecture was designed to parse text, images, and speech (Google Cloud Speech-to-Text). The backend leverages Python's SymPy library as an isolated deterministic solver, ensuring the AI can definitively evaluate complex mathematics before generating final LaTeX structures.
+- Edit LaTeX in a live editor with a rendered preview
+- Ask the AI to rewrite, solve, explain, or format math
+- Upload a PDF and send selected text to the AI as context
+- Record voice commands and transcribe them into editing actions
+- Save document state and chat history into backend sessions
+- Compile the current LaTeX document into a PDF
 
-## Challenges we ran into
-Integrating multiple modalities presented several hurdles:
-- Structuring consistent and correct LaTeX formatting from unpredictable AI outputs.
-- Calibrating Vertex AI prompts to maintain structural integrity without hallucinating syntax.
-- Handling real-time voice transcription accurately in the context of advanced math terminology.
-- Building a robust, fully supported LaTeX editor capable of live differential updates.
-- Normalizing garbled text extraction from embedded PDF preview layers.
+## Architecture
 
-## Accomplishments that we're proud of
-StemFlow was fully conceptualized, engineered, and deployed in 24 hours during a hackathon at WashU. We successfully delivered a functional tool that tangibly solves a widespread academic pain point for students and researchers alike.
+### Frontend
 
-## What we learned
-We gained critical experience orchestrating complex AI agent pipelines and connecting deterministic logic (SymPy) with non-deterministic LLMs. On the infrastructure side, we learned the importance of tight resource management and having backup cloud credits, as scaling multimodal AI operations is highly resource-intensive.
+- Location: `frontend/`
+- Stack: Next.js App Router, React, TypeScript, Framer Motion
+- Main page: `frontend/app/page.tsx`
+- API helper: `frontend/app/lib/api.ts`
+- Compile proxy route: `frontend/app/api/compile/route.ts`
 
-## What's next for StemFlow
-- Broader integration of underlying structural models.
-- Dedicated cloud deployment for accessible remote hosting.
-- Direct integrations into popular Learning Management Systems (LMS).
+The frontend runs on `http://localhost:3000`.
 
----
+### Backend
 
-## Workspace Features
+- Location: `backend/`
+- Stack: FastAPI, Python, Google GenAI SDK, SymPy
+- Entry point: `backend/main.py`
+- AI logic: `backend/services/vertex_ai.py`
+- Google auth handling: `backend/services/google_auth.py`
+- Session persistence: `backend/services/session_store.py`
+- PDF compilation: `backend/services/latex_compiler.py`
 
-StemFlow provides a focused environment for iterative math authoring. Instead of treating AI as a one-off prompt box, the product is built around a live working document.
+The backend runs on `http://127.0.0.1:8000` and exposes API routes under `/api`.
 
-- **LaTeX Editor & Live Preview**: Write or paste raw LaTeX and immediately see formatted math as you edit.
-- **Multimodal AI Assistant**: Use text or voice input to instruct the AI (e.g., "simplify this", "solve this", "format as a matrix").
-- **PDF Context Retrieval**: Upload PDFs side-by-side with your editor. Select text from the PDF to feed direct context to the AI.
-- **Agentic Diff Review**: The assistant proposes changes directly in a code difference viewer, allowing you to accept or reject edits intelligently.
-- **PDF Compilation**: Compile your workspace into a distributable `.pdf` binary effortlessly.
-- **Session Persistence**: Auto-save your workspaces and seamlessly reload old documents and PDFs.
+### How They Communicate
+
+- The frontend calls the backend directly for chat, voice, session, and PDF upload endpoints using `frontend/app/lib/api.ts`
+- The compile flow uses a Next.js route at `frontend/app/api/compile/route.ts`, which forwards requests to `http://127.0.0.1:8000/api/compile`
+- CORS in `backend/main.py` currently allows `http://localhost:3000`
+
+## Repository Structure
+
+```text
+.
+|- backend/
+|  |- main.py
+|  |- requirements.txt
+|  |- routers/
+|  |- services/
+|  `- sessions/
+|- frontend/
+|  |- app/
+|  |- package.json
+|  `- README.md
+|- agentic_tools.md
+`- README.md
+```
 
 ## Prerequisites
 
-Before running locally, make sure you have:
+Before running StemFlow locally, install:
+
 - Node.js 20+ and npm
 - Python 3.11+
-- A Google Cloud Project (Vertex AI and Speech API enabled)
-- Google Cloud credentials for local development, using either:
+- A Google Cloud project with billing enabled
+- Access to Vertex AI and, if you want voice features, Speech-related Google services
+- One of the supported Google auth methods:
   - Application Default Credentials via `gcloud auth application-default login`
-  - `GOOGLE_APPLICATION_CREDENTIALS` pointing to a service account JSON key
+  - `GOOGLE_APPLICATION_CREDENTIALS` pointing to a service account JSON file
 
-## Local Setup
+Optional but useful:
 
-To run the project locally, you must run both the backend and frontend simultaneously.
+- Google Cloud CLI (`gcloud`) for local ADC setup
 
-### 1. Backend Setup
+## Quick Start
 
-Open a terminal and navigate to the `backend` directory:
-```cmd
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/baohuy1303/voice2latex.git
+cd voice2latex
+```
+
+### 2. Set Up the Backend
+
+```bash
 cd backend
 python -m venv .venv
 ```
 
 Activate the virtual environment:
-* Windows Command Prompt: `.venv\Scripts\activate.bat`
-* Windows PowerShell: `.\.venv\Scripts\Activate.ps1`
-* Mac/Linux: `source .venv/bin/activate`
+
+- Windows PowerShell: `.\.venv\Scripts\Activate.ps1`
+- Windows Command Prompt: `.venv\Scripts\activate.bat`
+- macOS/Linux: `source .venv/bin/activate`
 
 Install dependencies:
-```cmd
+
+```bash
 pip install -r requirements.txt
 pip install python-multipart
 ```
 
-Create a `.env` file in the `backend` folder:
+Create `backend/.env`:
+
 ```env
 GCP_PROJECT_ID=your-gcp-project-id
 GCP_LOCATION=us-central1
 GEMINI_MODEL=gemini-2.5-flash
-GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\your-service-account.json
+GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/your-service-account.json
+LATEXLITE_API_KEY=your-latexlite-api-key
 ```
 
-Google Cloud authentication notes:
-- `gcloud auth login` is not enough for this app by itself.
-- For local development, the simplest setup is:
-```cmd
-gcloud auth application-default login
+Notes:
+
+- `LATEXLITE_API_KEY` is required for the PDF compile feature
+- `GOOGLE_APPLICATION_CREDENTIALS` is optional if you use local ADC instead
+- `backend/main.py` loads `backend/.env` automatically on startup
+
+Start the backend:
+
+```bash
+uvicorn main:app --reload --port 8000
 ```
-- If you prefer a service account key locally, set `GOOGLE_APPLICATION_CREDENTIALS` to the JSON file path instead.
-- Do not commit service account JSON files or real credential paths.
-- ADC is checked in the standard order: `GOOGLE_APPLICATION_CREDENTIALS`, local ADC from `gcloud auth application-default login`, then an attached service account in Google Cloud environments.
 
-Start the API:
-```cmd
-python -m uvicorn main:app --reload --port 8000
-```
-*You can verify the backend is running by visiting `http://127.0.0.1:8000/ping`*
+Sanity check:
 
-If Google Cloud auth is missing, the app will now return a clearer message:
-`Google Cloud credentials are not configured. Run gcloud auth application-default login for local development or set GOOGLE_APPLICATION_CREDENTIALS.`
+- Open [http://127.0.0.1:8000/ping](http://127.0.0.1:8000/ping)
+- Expected response: `{"status":"ok"}`
 
-### 2. Frontend Setup
+### 3. Set Up the Frontend
 
-Open a second terminal and navigate to the `frontend` directory:
-```cmd
+Open a second terminal:
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Navigate to `http://localhost:3000` in your browser.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Architecture
+## Environment and Config
 
-For a detailed breakdown of the agentic AI pipeline, data flows, tool integrations, and Mermaid.js system diagrams, see **[agentic_tools.md](./agentic_tools.md)**.
+### Backend `.env`
 
-## Contributors
-- Huy B. Huynh - https://github.com/baohuy1303
-- Amen Bush - https://github.com/amen2x
+StemFlow currently reads backend configuration from `backend/.env`.
+
+Supported variables used by the codebase:
+
+- `GCP_PROJECT_ID`
+  - Used by the Gemini/Vertex client in `backend/services/vertex_ai.py`
+- `GCP_LOCATION`
+  - Defaults to `us-central1` if omitted
+- `GEMINI_MODEL`
+  - Used by Gemini calls in chat and voice flows
+- `GOOGLE_APPLICATION_CREDENTIALS`
+  - Optional if using ADC
+  - Should be the full path to a service account JSON file
+- `LATEXLITE_API_KEY`
+  - Required for `POST /api/compile`
+
+### Frontend Config
+
+The frontend does not currently use a checked-in `.env.local` file for backend URLs.
+
+Current hardcoded local endpoints:
+
+- `frontend/app/lib/api.ts` uses `http://localhost:8000/api`
+- `frontend/app/api/compile/route.ts` forwards to `http://127.0.0.1:8000/api/compile`
+
+That means local development assumes:
+
+- frontend on port `3000`
+- backend on port `8000`
+
+## Google Cloud / Vertex / Gemini Setup
+
+StemFlow uses Gemini through Vertex AI. The backend checks for Google credentials using the standard ADC flow.
+
+### Important: `gcloud auth login` Is Not Enough
+
+`gcloud auth login` authenticates the CLI user session. It does not create Application Default Credentials for local code.
+
+For local development with ADC, use:
+
+```bash
+gcloud auth application-default login
+```
+
+### Supported Local Auth Options
+
+Option 1: ADC with `gcloud`
+
+```bash
+gcloud auth application-default login
+```
+
+Option 2: Service account JSON
+
+Set `GOOGLE_APPLICATION_CREDENTIALS` in `backend/.env`:
+
+```env
+GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+```
+
+### Vertex Setup Checklist
+
+Make sure the selected Google Cloud project:
+
+- has billing enabled
+- has Vertex AI API enabled
+- has any other required APIs enabled for the features you use
+- grants the authenticated user or service account permission to call Vertex AI
+
+## Common Troubleshooting
+
+### Google Cloud credentials are not configured
+
+Typical message:
+
+```text
+Google Cloud credentials are not configured. Run `gcloud auth application-default login` for local development or set `GOOGLE_APPLICATION_CREDENTIALS`...
+```
+
+What to do:
+
+- If using ADC, run `gcloud auth application-default login`
+- If using a service account key, verify `GOOGLE_APPLICATION_CREDENTIALS` points to the JSON file, not to the directory and not to values copied from inside the JSON
+- Restart the backend after changing credentials
+
+### `gcloud` is not recognized
+
+Google Cloud CLI is not installed or not on your PATH.
+
+Options:
+
+- Install Google Cloud CLI, then run `gcloud auth application-default login`
+- Or skip `gcloud` and use `GOOGLE_APPLICATION_CREDENTIALS` with a service account JSON file
+
+### `403 PERMISSION_DENIED` / Vertex AI API disabled
+
+Typical meaning:
+
+- credentials are loading
+- but the project does not have Vertex AI enabled, billing enabled, or correct permissions
+
+Check:
+
+- the project in `GCP_PROJECT_ID`
+- Vertex AI API is enabled
+- billing is enabled
+- the user or service account has access to the project
+
+### Backend not reachable from the frontend
+
+Symptoms:
+
+- chat requests fail immediately
+- session requests fail
+- frontend loads but AI actions do not work
+
+Check:
+
+- backend is running on port `8000`
+- [http://127.0.0.1:8000/ping](http://127.0.0.1:8000/ping) returns a healthy response
+- frontend is running on `http://localhost:3000`
+- you did not change the backend port without also updating frontend URLs
+
+### PDF compile fails
+
+Compile requests depend on `LATEXLITE_API_KEY`.
+
+If compile fails:
+
+- verify `LATEXLITE_API_KEY` is set in `backend/.env`
+- restart the backend
+- check the backend compile route in `backend/routers/compile.py`
+- remember that compile uses the external LaTeXLite service through `backend/services/latex_compiler.py`
+
+### Voice features do not work
+
+Voice transcription still depends on Google auth and backend availability.
+
+Check:
+
+- Google credentials are configured
+- the backend is running
+- the browser has microphone permission
+
+## Developer Notes
+
+### Key Frontend Files
+
+- `frontend/app/page.tsx`
+  - main StemFlow UI
+  - session loading, autosave state, editor state, chat state
+- `frontend/app/lib/api.ts`
+  - browser-side API calls to the backend
+- `frontend/app/components/`
+  - editor, preview, PDF viewer, floating chat/voice UI
+- `frontend/app/hooks/useMicrophone.ts`
+  - microphone recording logic
+- `frontend/app/api/compile/route.ts`
+  - proxy route for PDF compilation
+
+### Key Backend Files
+
+- `backend/main.py`
+  - FastAPI startup, CORS, router registration, startup auth warning
+- `backend/routers/chat.py`
+  - main non-streaming AI chat endpoint
+- `backend/routers/chat_stream.py`
+  - streaming chat endpoint
+- `backend/routers/voice.py`
+  - voice transcription endpoint
+- `backend/routers/session.py`
+  - session CRUD and PDF upload endpoints
+- `backend/routers/compile.py`
+  - PDF compile endpoint
+
+### Session Handling
+
+- Session storage lives in `backend/services/session_store.py`
+- Session data is stored on disk under `backend/sessions/`
+- The frontend persists:
+  - current document
+  - chat history
+  - uploaded session PDF reference
+
+### AI and Chat Logic
+
+- Gemini client creation and auth handling live in:
+  - `backend/services/vertex_ai.py`
+  - `backend/services/google_auth.py`
+- Prompting and tool use are centered in `backend/services/vertex_ai.py`
+- Symbolic math helpers live in `backend/services/sympy_solver.py`
+
+## Additional Docs
+
+- [frontend/README.md](./frontend/README.md) for frontend-specific notes
+- [agentic_tools.md](./agentic_tools.md) for the AI/tooling design background
+
+## Known Gaps In The Repo
+
+These docs reflect the current codebase, but a few things are still implicit in the implementation:
+
+- frontend and compile backend URLs are hardcoded instead of being environment-driven
+- the README cannot document the exact LaTeXLite account setup beyond `LATEXLITE_API_KEY`, because that integration is external
+- there is no backend-specific README with deeper API or service notes yet
